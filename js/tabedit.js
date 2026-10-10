@@ -52,6 +52,7 @@ function lenChoices(grid, cur) {
 }
 
 const ED_DRAFT = "guitaric.draft";
+const ED_DISCARD = "保存していない変更があります。\n変更を破棄しますか？";
 const NEW_SONG_TEXT = "| r:2 r:2 r:2 r:2 |";
 const ed = {
   loaded: false, id: null, grid: 8, text: "", saved: "",
@@ -72,7 +73,7 @@ function edClearDraft() { try { localStorage.removeItem(ED_DRAFT); } catch (e) {
 
 // Opens a song (null = new song) in the editor and switches to it.
 function openEditor(s) {
-  if (edDirty() && !confirm("保存していない変更があります。破棄して別の曲を開きますか？")) return;
+  if (edDirty() && !confirm(ED_DISCARD)) return;
   edLoad(s ? { id: s.id, grid: s.grid || 8, title: s.title, bpm: s.bpm || 80, text: s.text } : null);
   location.hash = "edit";
 }
@@ -427,14 +428,17 @@ function edSave() {
   if (practice.songId === entry.id && !practice.fromEditor) loadPractice(entry.id);
 }
 
-// 練習: practice this song; with unsaved changes, ask whether to save first
+// 練習: practice this song; unsaved changes are discarded after asking
 function edPractice() {
   edStop(false);
   if (!edDirty() && ed.id) { openPractice(ed.id); return; }
   if (!edDirty() && !ed.id) { edGoPractice(); return; }
-  // system dialogs, as for 一覧: OK saves first; otherwise practice the unsaved content, or stay
-  if (confirm("保存していない変更があります。保存してから練習しますか？")) { edSave(); if (!edDirty()) openPractice(ed.id); }
-  else if (confirm("保存せずに練習しますか？")) edGoPractice();
+  if (!confirm(ED_DISCARD)) return;
+  // the changes are dropped: practice the saved song (a song never saved has nothing to practice)
+  const id = ed.id;
+  ed.loaded = false;
+  edClearDraft();
+  if (id) openPractice(id); else location.hash = "songs";
 }
 // practice what the editor holds now, without saving it
 function edGoPractice() {
@@ -444,7 +448,7 @@ function edGoPractice() {
 }
 
 function edBack() {
-  if (edDirty() && !confirm("保存していない変更があります。保存せずに一覧に戻りますか？")) return;
+  if (edDirty() && !confirm(ED_DISCARD)) return;
   edStop(false);
   ed.loaded = false;
   edClearDraft();
