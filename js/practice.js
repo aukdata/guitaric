@@ -8,6 +8,7 @@ const practice = {
   onsetDet: null, tap: null, tapOut: null, onsets: [], lastStrum: -1,
   firstTry: [], startedAt: 0, mutedUntil: 0, wakeLock: null
 };
+const model = { sources: [], timers: [] };
 
 function currentSongId() { try { return localStorage.getItem("guitaric.song"); } catch (e) { return null; } }
 function setCurrentSongId(id) { try { localStorage.setItem("guitaric.song", id); } catch (e) {} }
@@ -28,6 +29,7 @@ function fillSongSelect() {
 function loadPractice(id) {
   const s = allSongs().find(x => x.id === id) || allSongs()[0];
   setCurrentSongId(s.id);
+  if (model.sources.length) stopModel();
   practice.song = buildSong(s);
   practice.tab = renderTab($("pTab"), practice.song, { onStepClick: i => gotoStep(i) });
   setMetroSong(practice.song);
@@ -259,18 +261,58 @@ function stopPracticeMic() {
   $("pMeter").style.width = "0%";
 }
 
-// Plays the current step so the player can hear it; judging pauses meanwhile so the speaker can't pass it.
+// (model = the sources and timers of the playback in progress, declared at the top)
+// Plays the whole song at the metronome tempo, highlighting each step as it sounds.
+// Judging pauses meanwhile so the speaker can't pass steps; pressing again stops it.
+
+function stopModel() {
+  model.sources.forEach(src => { try { src.stop(); } catch (e) {} });
+  model.timers.forEach(clearTimeout);
+  model.sources = []; model.timers = [];
+  if (practice.tab) { practice.tab.setPlaying(-1); practice.tab.scrollTo(practice.idx); }
+  practice.mutedUntil = Math.min(practice.mutedUntil, ctx ? ctx.currentTime : 0);
+  practice.tracker.reset();
+  $("pModel").textContent = "お手本";
+}
+
 function playModel() {
   ensureContext();
-  const st = practice.song.steps[practice.idx];
-  if (!st || !st.notes.length) return;
-  const data = synthStrum(stepMidis(st), ctx.sampleRate, 1.6);
-  const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
-  const src = ctx.createBufferSource(); src.buffer = b;
-  const g = ctx.createGain(); g.gain.value = 2.5;
-  src.connect(g); g.connect(ctx.destination); src.start();
-  practice.mutedUntil = ctx.currentTime + 1.8;
+  if (model.sources.length) { stopModel(); return; }
+  const steps = practice.song.steps, cell = 60 / effectiveBpm() * 4 / practice.song.grid;
+  const t0 = ctx.currentTime + 0.15;
+  let t = t0;
+  steps.forEach((st, i) => {
+    const dur = st.len * cell, start = t;
+    model.timers.push(setTimeout(() => { practice.tab.setPlaying(i); practice.tab.scrollTo(i); }, (start - ctx.currentTime) * 1000));
+    t += dur;
+    if (!st.notes.length) return;
+    // a note rings until the next one starts (the last one rings on)
+    const ring = i === steps.length - 1 ? 1.6 : dur + 0.05;
+    const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + 0.05, i + 1);
+    const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
+    const src = ctx.createBufferSource(); src.buffer = b;
+    // bends glide up into the bent pitch; a release starts bent and comes down
+    if (st.tech === "b") {
+      src.playbackRate.setValueAtTime(2 ** (-st.bend / 12), start);
+      src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.2, dur * 0.6));
+    } else if (st.tech === "d") {
+      src.playbackRate.setValueAtTime(2 ** (2 / 12), start);
+      src.playbackRate.setValueAtTime(2 ** (2 / 12), start + Math.min(0.08, dur * 0.3));
+      src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.25, dur * 0.8));
+    }
+    const g = ctx.createGain();
+    const vol = st.tech === "h" || st.tech === "p" || st.tech === "s" ? 1.6 : 2.5; // not picked: softer
+    g.gain.setValueAtTime(vol, start);
+    g.gain.setValueAtTime(vol, start + ring - 0.04);
+    g.gain.linearRampToValueAtTime(0, start + ring);
+    src.connect(g); g.connect(ctx.destination); src.start(start); src.stop(start + ring + 0.02);
+    model.sources.push(src);
+  });
+  const end = t + 1.6;
+  model.timers.push(setTimeout(stopModel, (end - ctx.currentTime) * 1000));
+  practice.mutedUntil = end + 0.2;
   practice.tracker.reset();
+  $("pModel").textContent = "停止";
 }
 
 $("pSong").addEventListener("change", e => loadPractice(e.target.value));
