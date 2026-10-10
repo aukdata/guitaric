@@ -148,6 +148,10 @@ function createTracker() {
   let acc = new Array(12).fill(0), seen = new Array(12).fill(0), bass = null, hist = [], prevSpec = null, pending = null, count = 0, shown = null, since = 99;
   return {
     reset() { acc.fill(0); seen.fill(0); bass = null; pending = null; count = 0; shown = null; hist = []; prevSpec = null; since = 99; },
+    // a new strum found by the onset detector: weaken (not erase) the evidence so far and skip the pick
+    // noise. Low roots like G2 take ~0.5 s to show up, so a quick re-strum of the same chord keeps what
+    // was already heard, while a different chord soon outweighs it.
+    markOnset() { for (let i = 0; i < 12; i++) { acc[i] *= 0.3; seen[i] = Math.floor(seen[i] / 2); } since = 0; },
     update(res) {
       // a new strum: the level jumps above the quietest of the last few frames
       // (keeps restarting while the level is still rising, so the attack itself is skipped)
@@ -183,6 +187,66 @@ function createTracker() {
       if (name === pending) count++; else { pending = name; count = 1; }
       if (count >= 2 || shown === null) shown = cands;
       return { chroma: norm, cands: shown, bassMidi: bass, lowPc, onset };
+    }
+  };
+}
+
+// Finds the moment each note or strum starts, with ~5 ms resolution. The chord analysis above uses a
+// 0.34 s window, which smears a re-strum of the same chord into the one still ringing; this looks at
+// short frames instead: log-magnitude spectral flux in 80-2500 Hz (so a metronome click above that band
+// is ignored), peak-picked against a moving average.
+const ONSET = { size: 1024, hop: 256, fmin: 80, fmax: 2500, lambda: 10, lag: 2, delta: 0.012, mult: 2, avgSec: 0.15, refractory: 0.1, gate: 0.0003, riseHops: 16 };
+function createOnsetDetector(sr, opts = {}) {
+  const P = { ...ONSET, ...opts };
+  const ring = new Float32Array(P.size), frame = new Float32Array(P.size);
+  const lo = Math.max(1, Math.floor(P.fmin * P.size / sr)), hi = Math.ceil(P.fmax * P.size / sr);
+  const nAvg = Math.max(1, Math.round(P.avgSec * sr / P.hop));
+  let filled = 0, sinceHop = 0, last = -1, flux1 = 0, flux2 = 0;
+  const specs = [], fluxes = [], levels = [], pending = [];
+  return {
+    // samples: newest audio, t0: time (s) of its first sample. Returns [{ t, strength }] for onsets found.
+    push(samples, t0) {
+      const out = [];
+      for (let i = 0; i < samples.length; i++) {
+        ring.copyWithin(0, 1); ring[P.size - 1] = samples[i];
+        if (filled < P.size) filled++;
+        if (++sinceHop < P.hop || filled < P.size) continue;
+        sinceHop = 0;
+        let ms = 0; for (let k = 0; k < P.size; k++) ms += ring[k] * ring[k];
+        levels.push(ms); if (levels.length > P.riseHops + 12) levels.shift();
+        frame.set(ring);
+        const mag = fftMag(frame), L = new Float32Array(hi - lo);
+        for (let k = lo; k < hi; k++) L[k - lo] = Math.log10(1 + P.lambda * mag[k]);
+        let flux = 0;
+        if (specs.length >= P.lag) {
+          // compare with the max of neighbouring bins a few frames back, so vibrato and bends don't count
+          const ref = specs[specs.length - P.lag];
+          for (let k = 0; k < L.length; k++) {
+            const d = L[k] - Math.max(ref[k], ref[k - 1] || 0, ref[k + 1] || 0);
+            if (d > 0) flux += d;
+          }
+          flux /= L.length;
+        }
+        specs.push(L); if (specs.length > P.lag) specs.shift();
+        // peak-pick the previous frame once this one shows it was a local maximum
+        const t = t0 + (i + 1 - P.hop - P.size / 2) / sr;
+        const avg = fluxes.length ? fluxes.reduce((a, b) => a + b, 0) / fluxes.length : 0;
+        if (flux1 > flux2 && flux1 >= flux && flux1 > avg * P.mult + P.delta && Math.sqrt(ms / P.size) > P.gate && t - last > P.refractory) {
+          // the level before the attack; the rise is measured once the strum has fully sounded
+          last = t;
+          pending.push({ t, strength: flux1, before: Math.min(...levels.slice(-8, -2)), age: 0, peak: 0 });
+        }
+        // level change across the attack (dB), over ~85 ms because a slow strum builds up gradually:
+        // a real strum adds energy; a finger squeak or fret noise on a ringing chord doesn't
+        for (const o of pending) { o.peak = Math.max(o.peak, ms); o.age++; }
+        while (pending.length && pending[0].age >= P.riseHops) {
+          const o = pending.shift();
+          out.push({ t: o.t, strength: o.strength, rise: 10 * Math.log10((o.peak + 1e-12) / (o.before + 1e-12)) });
+        }
+        fluxes.push(flux1); if (fluxes.length > nAvg) fluxes.shift();
+        flux2 = flux1; flux1 = flux;
+      }
+      return out;
     }
   };
 }

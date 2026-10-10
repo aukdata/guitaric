@@ -1,8 +1,11 @@
 /* ===== practice: wait mode (advance when the expected chord/note is played) ===== */
-const JUDGE = { present: 0.2, extra: 0.3, okFrames: 2, wrongFrames: 6, settle: 2 };
+// settle: seconds after a strum before judging (the 0.34 s chord window still holds the previous sound).
+// A repeat of the same chord/note can only be told apart by a new strum, so it uses a stricter path.
+const JUDGE = { present: 0.2, extra: 0.3, extraNote: 0.25, extraSal: 0.8, okFrames: 2, wrongAfter: 0.9, settle: 0.12, settleSame: 0.2, minGap: 0.3 };
 const practice = {
   song: null, idx: 0, tab: null, stream: null, source: null, raf: 0,
-  tracker: createTracker(), okRun: 0, missRun: 0, fresh: true, sinceOnset: 99, silent: 0,
+  tracker: createTracker(), okRun: 0, missRun: 0, fresh: true, silent: 0, wrongShown: false, sameAsPrev: false, ringing: [], strummed: false,
+  onsetDet: null, tap: null, tapOut: null, onsets: [], lastStrum: -1,
   firstTry: [], startedAt: 0, mutedUntil: 0, wakeLock: null
 };
 
@@ -27,6 +30,7 @@ function loadPractice(id) {
   setCurrentSongId(s.id);
   practice.song = buildSong(s);
   practice.tab = renderTab($("pTab"), practice.song, { onStepClick: i => gotoStep(i) });
+  setMetroSong(practice.song);
   restartPractice();
 }
 
@@ -48,8 +52,12 @@ function gotoStep(i) {
   const steps = practice.song.steps;
   for (let k = 0; k < steps.length; k++) if (k >= i) practice.tab.setState(k, "");
   practice.idx = i;
-  practice.okRun = 0; practice.missRun = 0; practice.fresh = false; practice.sinceOnset = 99;
+  practice.okRun = 0; practice.missRun = 0; practice.fresh = false;
   if (i >= steps.length) { finishPractice(); return; }
+  const prev = steps.slice(0, i).reverse().find(x => x.notes.length);
+  practice.sameAsPrev = !!prev && soundKey(prev) === soundKey(steps[i]);
+  practice.ringing = prev ? stepMidis(prev).map(m => m % 12) : [];
+  practice.strummed = false;
   practice.tab.setState(i, "current");
   practice.tab.scrollTo(i);
   const st = steps[i];
@@ -76,34 +84,58 @@ function finishPractice() {
 }
 
 // Is the expected step sounding? Returns { ok, missing } (missing = note names not heard).
-function judgeStep(st, res, tr) {
+// A strum (or pluck) adds energy: either a big rise, or a clear rise with a strong spectral change.
+// Fret squeaks and finger noise on a ringing chord measure below this (checked on real recordings).
+const isStrum = o => o.rise >= 8 || (o.rise >= 2 && o.strength >= 0.06);
+
+const soundKey = st => st.chord ? (chordPitchClasses(st.chord) || []).slice().sort().join() : stepMidis(st).sort().join();
+
+// Is the expected step sounding, and nothing else? Returns { ok, missing, extra } (note names).
+// repeat: the same chord was just confirmed, so a new strum only has to sound consistent with it
+// (low roots such as G2 need ~0.5 s to show up, longer than a quick re-strum leaves them).
+// ringing: pitch classes of the previous step, which may still sound under the new note.
+function judgeStep(st, res, tr, repeat, ringing) {
+  const ch = tr.chroma, total = ch.reduce((a, b) => a + b, 0);
   if (st.chord) {
     const pcs = chordPitchClasses(st.chord) || [...new Set(stepMidis(st).map(m => m % 12))];
-    const ch = tr.chroma, total = ch.reduce((a, b) => a + b, 0);
-    if (!total) return { ok: false, missing: [] };
+    if (!total) return { ok: false, missing: [], extra: [] };
     const missing = pcs.filter(pc => ch[pc] < JUDGE.present);
+    // a tone outside the chord: a wrong fret or a string that should be muted
+    // (tones of the previous step may still ring; they only count toward the overall ratio below)
+    const extraPcs = ch.map((v, pc) => (!pcs.includes(pc) && !ringing.includes(pc) && v >= JUDGE.extraNote ? pc : -1)).filter(pc => pc >= 0);
     const extra = ch.reduce((a, v, pc) => a + (pcs.includes(pc) ? 0 : v), 0) / total;
     const root = parseChordName(st.chord).pc;
     // four-note chords often lose their fifth; allow one missing tone except the root
     const allowed = pcs.length >= 4 ? 1 : 0;
-    const ok = !missing.includes(root) && missing.length <= allowed && extra <= JUDGE.extra;
-    return { ok, missing: missing.map(pc => NOTE_NAMES[pc]) };
+    const ok = !extraPcs.length && (repeat ? missing.length < pcs.length && extra <= JUDGE.extra
+      : !missing.includes(root) && missing.length <= allowed && extra <= JUDGE.extra);
+    return { ok, missing: missing.map(pc => NOTE_NAMES[pc]), extra: extraPcs.map(pc => NOTE_NAMES[pc]) };
   }
-  const want = stepMidis(st);
+  const want = stepMidis(st), wantPcs = want.map(m => m % 12);
+  const top = Math.max(0, ...res.notes.map(n => n.salience));
+  // strong notes of another pitch class that the previous step doesn't explain
+  const extra = [...new Set(res.notes.filter(n => n.salience >= top * JUDGE.extraSal && !wantPcs.includes(n.midi % 12) && !ringing.includes(n.midi % 12)).map(n => noteName(n.midi)))];
   if (want.length === 1) {
     // the target must be one of the loudest notes, not the previous note still ringing under a new one
-    const top = Math.max(0, ...res.notes.map(n => n.salience));
-    const ok = res.notes.some(n => n.midi === want[0] && n.salience >= top * 0.7);
-    return { ok, missing: ok ? [] : [noteName(want[0])] };
+    const hit = res.notes.some(n => n.midi === want[0] && n.salience >= top * 0.7);
+    return { ok: hit && !extra.length, missing: hit ? [] : [noteName(want[0])], extra };
   }
-  const missing = want.filter(m => tr.chroma[m % 12] < JUDGE.present);
-  return { ok: missing.length === 0, missing: missing.map(noteName) };
+  const missing = want.filter(m => ch[m % 12] < JUDGE.present);
+  return { ok: missing.length === 0 && !extra.length, missing: missing.map(noteName), extra };
 }
 
 function practiceTick(buf) {
   const res = detectNotes(buf, ctx.sampleRate);
   const db = 20 * Math.log10(res.rms + 1e-9);
   $("pMeter").style.width = Math.max(0, Math.min(100, (db + 70) / 60 * 100)) + "%";
+  // strums found by the short-window onset detector since the last frame
+  let strum = false;
+  for (const o of practice.onsets.splice(0)) {
+    // a strum must add energy; fret squeaks and finger noise on a ringing chord don't
+    if (o.t < practice.mutedUntil || o.t - practice.lastStrum < JUDGE.minGap || !isStrum(o)) continue;
+    practice.lastStrum = o.t; strum = true;
+  }
+  if (strum) practice.tracker.markOnset();
   const tr = practice.tracker.update(res);
   if (res.notes.length) practice.silent = 0;
   else if (++practice.silent === 6) practice.tracker.reset();
@@ -111,14 +143,15 @@ function practiceTick(buf) {
   const steps = practice.song.steps;
   if (practice.idx >= steps.length) return;
   const st = steps[practice.idx];
-  if (tr.onset) { practice.fresh = true; practice.sinceOnset = 0; } else practice.sinceOnset++;
-  const j = judgeStep(st, res, tr);
+  if (strum) { practice.fresh = true; practice.okRun = 0; practice.strummed = true; practice.wrongShown = false; }
+  // time since the attack itself (the onset event arrives ~0.1 s late, but carries its own time)
+  const since = ctx.currentTime - practice.lastStrum;
+  const j = judgeStep(st, res, tr, practice.sameAsPrev, practice.ringing);
   if (j.ok) {
     practice.missRun = 0;
     // only a new attack counts, so a chord still ringing from the previous step can't pass the next one
-    // the analysis window is ~0.34 s long, so right after an attack the old note still dominates it
-    if (practice.sinceOnset < JUDGE.settle) return;
-    if (practice.fresh && ++practice.okRun >= JUDGE.okFrames) {
+    if (since < (practice.sameAsPrev ? JUDGE.settleSame : JUDGE.settle)) return;
+    if (practice.fresh && ++practice.okRun >= (practice.sameAsPrev ? 1 : JUDGE.okFrames)) {
       if (!practice.startedAt) practice.startedAt = performance.now();
       setFeedback("OK", "ok");
       practice.tab.setState(practice.idx, practice.firstTry[practice.idx] ? "done" : "done-retry");
@@ -129,13 +162,20 @@ function practiceTick(buf) {
   }
   practice.okRun = 0;
   // the target is not sounding now, so the next time it appears it is a fresh attempt
-  if (++practice.missRun >= 2) practice.fresh = true;
-  if (res.notes.length && practice.sinceOnset >= JUDGE.wrongFrames && practice.sinceOnset < JUDGE.wrongFrames + 2) {
+  // (not for a repeat: there the target never stops sounding, so only a new strum counts)
+  if (++practice.missRun >= 2 && !practice.sameAsPrev) practice.fresh = true;
+  // only a strum made while this step is current can be wrong (not the previous chord still ringing)
+  // (a note held over from the previous step is not a mistake either: the new one may just be late)
+  const loudest = res.notes.reduce((a, n) => (!a || n.salience > a.salience ? n : a), null);
+  if (practice.strummed && !practice.wrongShown && loudest && since >= JUDGE.wrongAfter &&
+      !(!st.chord && practice.ringing.includes(loudest.midi % 12))) {
+    practice.wrongShown = true;
     if (!practice.startedAt) practice.startedAt = performance.now();
     practice.firstTry[practice.idx] = false;
     const heard = st.chord && tr.cands && tr.cands[0] ? tr.cands[0].name.replace("（単音）", "")
       : res.notes.slice().sort((a, b) => b.salience - a.salience).slice(0, st.notes.length > 1 ? 3 : 1).map(n => noteName(n.midi)).join(" ");
-    setFeedback(`今鳴っているのは ${heard}` + (j.missing.length ? `（${j.missing.join("・")} が聞こえません）` : ""), "ng");
+    const why = [j.missing.length ? `${j.missing.join("・")} が聞こえません` : "", j.extra.length ? `余計な音 ${j.extra.join("・")} が鳴っています` : ""].filter(Boolean).join("、");
+    setFeedback(`今鳴っているのは ${heard}` + (why ? `（${why}）` : ""), "ng");
   }
 }
 
@@ -159,6 +199,16 @@ async function startPracticeMic() {
   practice.source = ctx.createMediaStreamSource(practice.stream);
   practice.source.connect(analyser);
   practice.tracker.reset();
+  // stream the raw input to the onset detector in small blocks
+  practice.onsetDet = createOnsetDetector(ctx.sampleRate);
+  practice.onsets = []; practice.lastStrum = -1;
+  practice.tap = ctx.createScriptProcessor(1024, 1, 1);
+  practice.tap.onaudioprocess = e => {
+    const x = e.inputBuffer.getChannelData(0);
+    practice.onsets.push(...practice.onsetDet.push(x, ctx.currentTime - x.length / ctx.sampleRate));
+  };
+  practice.tapOut = ctx.createGain(); practice.tapOut.gain.value = 0;
+  practice.source.connect(practice.tap); practice.tap.connect(practice.tapOut); practice.tapOut.connect(ctx.destination);
   $("pMic").innerHTML = '<span class="dot"></span>マイクを停止';
   $("pMic").classList.remove("primary");
   setFeedback("弾いてください", "");
@@ -177,8 +227,9 @@ async function startPracticeMic() {
 function stopPracticeMic() {
   cancelAnimationFrame(practice.raf); practice.raf = 0;
   if (practice.stream) practice.stream.getTracks().forEach(t => t.stop());
-  if (practice.source) practice.source.disconnect();
-  practice.stream = practice.source = null;
+  [practice.source, practice.tap, practice.tapOut].forEach(n => n && n.disconnect());
+  if (practice.tap) practice.tap.onaudioprocess = null;
+  practice.stream = practice.source = practice.tap = practice.tapOut = null;
   if (practice.wakeLock) { practice.wakeLock.release().catch(() => {}); practice.wakeLock = null; }
   $("pMic").innerHTML = '<span class="dot"></span>マイクを開始';
   $("pMic").classList.add("primary");

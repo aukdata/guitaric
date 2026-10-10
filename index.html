@@ -36,6 +36,20 @@
       <div class="meter" aria-label="入力レベル"><i id="pMeter"></i></div>
     </section>
 
+    <section class="panel controls metro" aria-label="クリック">
+      <button id="mToggle" type="button" aria-pressed="false">クリック</button>
+      <label class="inline">BPM <input id="mBpm" type="number" min="20" max="300" value="80" inputmode="numeric"></label>
+      <label class="inline">速さ
+        <select id="mRate">
+          <option value="0.5">0.5倍</option><option value="0.75">0.75倍</option>
+          <option value="1" selected>1倍</option><option value="1.25">1.25倍</option>
+        </select>
+      </label>
+      <span id="mEff" class="eff"></span>
+      <span id="mDots" class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <label class="inline vol">音量 <input id="mVol" type="range" min="0.05" max="1" step="0.05" value="0.5"></label>
+    </section>
+
     <section class="panel target" aria-live="polite">
       <div class="target-row">
         <div>
@@ -159,6 +173,7 @@
 <script src="js/songs.js"></script>
 <script src="js/tab.js"></script>
 <script src="js/analyze.js"></script>
+<script src="js/metronome.js"></script>
 <script src="js/practice.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/app.js"></script>

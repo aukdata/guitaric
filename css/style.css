@@ -154,3 +154,15 @@ button.danger { color: var(--bad); }
 .howto summary { cursor: pointer; color: var(--accent); }
 .howto ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
 .saved { color: var(--good); font-size: .88rem; }
+
+/* ===== metronome ===== */
+.metro { gap: 10px 14px; }
+label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; color: var(--muted); }
+label.inline input[type=number] { width: 4.5em; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
+label.inline select { padding: 7px 8px; }
+.vol input { width: 110px; accent-color: var(--accent); }
+.eff { font-family: var(--f-mono); font-size: .85rem; color: var(--muted); }
+.dots { display: inline-flex; gap: 6px; }
+.dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
+.dots i:first-child { box-shadow: inset 0 0 0 2px var(--accent); }
+.dots i.on { background: var(--accent); }

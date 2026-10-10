@@ -7,6 +7,7 @@ function showView(name) {
   // only one mode listens at a time
   if (name !== "analyze" && micStream) stopMic();
   if (name !== "practice" && practice.stream) stopPracticeMic();
+  if (name !== "practice" && metro.on) stopMetronome();
   for (const v of VIEWS) $("view-" + v).hidden = v !== name;
   document.querySelectorAll(".tab").forEach(t => {
     if (t.dataset.view === name) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
