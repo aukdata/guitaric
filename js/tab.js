@@ -136,7 +136,7 @@ function renderTab(container, song, opts = {}) {
       const from = song.steps.slice(0, i).reverse().find(x => x.tech === "b" && x.notes[0][0] === s && x.notes[0][1] === f);
       mk("line", { x1: cx, x2: cx, y1: y - 10, y2: tip + 6, class: "tab-arrow" }, g);
       head(cx, tip, true);
-      label(cx, from ? from.bend : 2);
+      label(cx, st.bend || (from ? from.bend : 2));
       mk("path", { d: `M${cx + 3} ${tip + 2} Q${ax} ${tip + 2} ${ax} ${y - 15}`, class: "tab-arrow" }, g);
       head(ax, y - 9, false);
     }
@@ -148,7 +148,7 @@ function renderTab(container, song, opts = {}) {
     const values = [], q0 = len * 4 / song.grid;
     let rem = q0;
     const choices = [];
-    for (const base of [4, 2, 1, 0.5, 0.25]) for (const dots of [1, 0]) choices.push({ q: base * (2 - 1 / 2 ** dots), base, dots });
+    for (const base of [4, 2, 1, 0.5, 0.25, 0.125]) for (const dots of [1, 0]) choices.push({ q: base * (2 - 1 / 2 ** dots), base, dots });
     choices.sort((a, b) => b.q - a.q);
     for (const c of choices) {
       if (c.base * song.grid / 4 < 1) continue; // finer than the grid
@@ -163,8 +163,8 @@ function renderTab(container, song, opts = {}) {
       else if (q >= 2) mk("rect", { x: x - 7, y: y4 - 6, width: 14, height: 6, class: "tab-restsym" }, g); // half: sits on a line
       else if (q >= 1) mk("path", { d: `M${x - 3} ${mid - 13} L${x + 4} ${mid - 5} Q${x} ${mid - 1} ${x + 1} ${mid + 2} L${x + 5} ${mid + 7} Q${x - 3} ${mid + 5} ${x + 1} ${mid + 13} Q${x - 7} ${mid + 7} ${x - 1} ${mid + 5} L${x - 4} ${mid} Q${x} ${mid - 4} ${x - 3} ${mid - 13} z`, class: "tab-restsym" }, g);
       else {
-        // 8th rest: a dot with a flag on a slanted stem; a 16th rest has two
-        const flags = q >= 0.5 ? 1 : 2;
+        // 8th rest: a dot with a flag on a slanted stem; a 16th rest has two, a 32nd three
+        const flags = q >= 0.5 ? 1 : q >= 0.25 ? 2 : 3;
         mk("line", { x1: x + 4, y1: mid - 8, x2: x - 1 - flags * 1.5, y2: mid + 8 + (flags - 1) * 5, class: "tab-reststem" }, g);
         for (let k = 0; k < flags; k++) {
           const fy = mid - 6 + k * 7, fx = x + 4 - k * 2.2;

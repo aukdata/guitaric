@@ -79,9 +79,9 @@ function chordPitchClasses(name) {
  *   C*4                 the chord strummed 4 times in its bar
  *   C?  6-3?            judged loosely: any strum / note passes
  *   4-7h  4-5p  5-5s    hammer-on / pull-off / slide into this note (shown on the TAB; the pitch is judged as usual)
- *   3-7b  3-7b1  3-7d   bend up a whole / half step (judged at the bent pitch) / release a pre-bent note
+ *   3-7b  3-7b1  3-7d   bend up a whole / half step (judged at the bent pitch) / release a pre-bent note (3-7d1 / 3-7d2: half / whole)
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
- *   @16 ...             at the very start: use a 16th-note grid
+ *   @16 ...             at the very start: use a 16th-note grid (@32: 32nd notes)
  */
 function parseSongText(text, opts = {}) {
   const grid = opts.grid || 8, beats = (opts.timeSig || [4, 4])[0];
@@ -102,11 +102,12 @@ function parseSongText(text, opts = {}) {
       if (body === "~") { items.push({ notes: [], tie: true, len: len || 1 }); continue; }
       const extra = loose ? { loose: true } : {};
       // a technique letter after a single note: h p s (display only), b / b1 bend, d release
-      const tech = /^\d-\d+(h|p|s|b[12]?|d)$/.exec(body);
+      const tech = /^\d-\d+(h|p|s|b[12]?|d[12]?)$/.exec(body);
       if (tech) {
         body = body.slice(0, -tech[1].length);
         extra.tech = tech[1][0];
         if (extra.tech === "b") extra.bend = tech[1][1] === "1" ? 1 : 2;
+        else if (extra.tech === "d" && tech[1][1]) extra.bend = +tech[1][1];
       }
       if (/^\d-\d+(\+\d-\d+)*$/.test(body)) {
         const notes = body.split("+").map(p => p.split("-").map(Number));
@@ -153,7 +154,7 @@ function saveUserSongs(list) {
 function allSongs() { return [...loadUserSongs(), ...PRESET_SONGS.map(s => ({ ...s, preset: true }))]; }
 function buildSong(s) {
   // a leading "@16" in the text sets the grid (cells per whole note), so pasted text carries it
-  const m = /^\s*@(4|8|16)\b/.exec(s.text || "");
+  const m = /^\s*@(4|8|16|32)\b/.exec(s.text || "");
   const timeSig = s.timeSig || [4, 4], grid = m ? +m[1] : s.grid || 8;
   const text = m ? s.text.slice(m[0].length) : s.text;
   return { ...s, timeSig, grid, ...parseSongText(text, { timeSig, grid }) };

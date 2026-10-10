@@ -129,20 +129,36 @@
     <div id="edBody" class="ed-body">
       <div id="edTab" class="tab-scroll"></div>
       <div id="edPop" class="ed-pop" role="dialog" aria-label="音の編集" hidden>
-        <div class="pop-head"><span id="popWhere"></span><button id="popClose" type="button" class="icon" aria-label="閉じる（Esc）">×</button></div>
-        <div class="pop-row"><span class="pop-label">弦</span><div id="popStrings" class="seg small"></div></div>
-        <div id="popPad" class="pad" aria-label="フレット"></div>
-        <div class="pop-row"><span class="pop-label">長さ</span><select id="popLen" aria-label="長さ"></select>
-          <label class="inline"><input id="popLoose" type="checkbox">判定ゆるめ</label></div>
-        <div class="pop-row"><span class="pop-label">奏法</span><div id="popTech" class="seg small">
-          <button type="button" data-tech="">なし</button><button type="button" data-tech="h" title="ハンマリング（H）">H</button><button type="button" data-tech="p" title="プリング（P）">P</button><button type="button" data-tech="s" title="スライド（S）">S</button><button type="button" data-tech="b2" title="1音チョーキング（B）">↑1音</button><button type="button" data-tech="b1" title="半音チョーキング（Shift+B）">↑半音</button><button type="button" data-tech="d" title="チョーキングを戻す（D）">↓戻す</button>
-        </div></div>
-        <div class="pop-row"><span class="pop-label">コード</span><input id="popChord" type="text" placeholder="Am など" aria-label="コード名" autocapitalize="off" autocomplete="off" spellcheck="false"><button id="popChordSet" type="button">コードにする</button></div>
+        <div class="pop-head"><span id="popWhere"></span><button id="popClose" type="button" class="icon" title="閉じる（Esc）" aria-label="閉じる"><i data-icon="x"></i></button></div>
+        <div id="popKind" class="seg pop-kind" role="radiogroup" aria-label="音符か休符か">
+          <button type="button" role="radio" data-kind="note">音符</button><button type="button" role="radio" data-kind="rest" title="休符（R）">休符</button>
+        </div>
+        <div id="popNote" class="pop-note">
+          <div id="popFrets" class="pop-frets" aria-label="フレット"></div>
+          <div class="pop-row">
+            <input id="popChord" type="text" placeholder="コード" aria-label="コード名" autocapitalize="off" autocomplete="off" spellcheck="false">
+            <button id="popChordSet" type="button" title="コードを反映（C で入力欄へ）">反映</button>
+            <label class="inline pop-loose" title="判定ゆるめ（L）"><input id="popLoose" type="checkbox">判定ゆるめ</label>
+          </div>
+          <div class="pop-row"><span class="pop-label">奏法</span>
+            <select id="popTech" aria-label="奏法">
+              <option value="">通常</option><option value="h">H</option><option value="p">P</option><option value="s">S</option>
+              <option value="b2">↑full</option><option value="b1">↑1/2</option><option value="d2">full↓</option><option value="d1">1/2↓</option>
+            </select>
+          </div>
+        </div>
+        <div class="pop-row pop-len"><span class="pop-label">音価</span>
+          <div class="len-slider">
+            <input id="popLen" type="range" min="0" max="5" step="1" aria-label="音価">
+            <div class="len-ticks" aria-hidden="true"><span>全</span><span>2分</span><span>4分</span><span>8分</span><span>16分</span><span>32分</span></div>
+          </div>
+          <label class="inline"><input id="popDot" type="checkbox">付点</label>
+        </div>
+        <hr class="pop-hr">
         <div class="pop-row actions">
-          <button id="popInsBefore" type="button" title="前に追加（Shift+Enter）">← 前に追加</button>
-          <button id="popInsAfter" type="button" title="後ろに追加（Enter）">後ろに追加 →</button>
-          <button id="popRest" type="button" title="休符にする（R）">休符</button>
-          <button id="popDel" type="button" class="danger" title="削除（Shift+Delete）">削除</button>
+          <button id="popInsBefore" type="button" title="前に挿入（Shift+Enter）">← 前に挿入</button>
+          <button id="popInsAfter" type="button" title="後に挿入（Enter）">後に挿入 →</button>
+          <button id="popDel" type="button" class="icon danger" title="削除（Shift+Delete）" aria-label="削除"><i data-icon="trash-2"></i></button>
         </div>
       </div>
     </div>
@@ -193,7 +209,8 @@
           <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>前・次の音へ</td></tr>
           <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>上・下の弦へ</td></tr>
           <tr><td><kbd>H</kbd> <kbd>P</kbd> <kbd>S</kbd></td><td>ハンマリング・プリング・スライド（もう一度押すと解除）</td></tr>
-          <tr><td><kbd>B</kbd> / <kbd>Shift</kbd>+<kbd>B</kbd> / <kbd>D</kbd></td><td>1音チョーキング / 半音チョーキング / チョーキングを戻す</td></tr>
+          <tr><td><kbd>B</kbd> / <kbd>Shift</kbd>+<kbd>B</kbd></td><td>↑full / ↑1/2</td></tr>
+          <tr><td><kbd>D</kbd> / <kbd>Shift</kbd>+<kbd>D</kbd></td><td>full↓ / 1/2↓</td></tr>
           <tr><td><kbd>R</kbd></td><td>休符にする</td></tr>
           <tr><td><kbd>L</kbd></td><td>判定ゆるめの切り替え</td></tr>
           <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>長さを短く・長く</td></tr>

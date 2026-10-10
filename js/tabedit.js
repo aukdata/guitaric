@@ -9,7 +9,7 @@ function stepToken(st, withLen) {
   if (!st.notes.length) return "r" + len;
   const q = st.loose ? "?" : "";
   if (st.chord) return st.chord + q + len;
-  const tech = st.tech ? st.tech + (st.tech === "b" && st.bend === 1 ? "1" : "") : "";
+  const tech = st.tech ? st.tech + (st.tech === "b" && st.bend === 1 ? "1" : st.tech === "d" && st.bend ? st.bend : "") : "";
   return st.notes.map(([s, f]) => `${s}-${f}`).join("+") + tech + q + len;
 }
 
@@ -118,11 +118,13 @@ function edRender() {
   $("edSave").dataset.dirty = edDirty() ? "1" : "";
 }
 
+// "3小節目 2+1/16拍目": the beat, plus how far into it as a note value
 function edWhere(i) {
   const song = ed.song, barCells = song.timeSig[0] * song.grid / 4, beat = song.grid / 4;
-  const cell = song.steps.slice(0, i).reduce((a, x) => a + x.len, 0);
-  const b = (cell % barCells) / beat + 1;
-  return `${Math.floor(cell / barCells) + 1}小節目 ${Number.isInteger(b) ? b : b.toFixed(1)}拍目`;
+  const cell = song.steps.slice(0, i).reduce((a, x) => a + x.len, 0), inBar = cell % barCells;
+  const b = Math.floor(inBar / beat) + 1, off = inBar % beat;
+  const gcd = (a, c) => (c ? gcd(c, a % c) : a), g = gcd(off, song.grid);
+  return `${Math.floor(cell / barCells) + 1}小節目 ${b}${off ? `+${off / g}/${song.grid / g}` : ""}拍目`;
 }
 
 function edStatus(msg) {
@@ -155,22 +157,55 @@ function edDrawCursor() {
 }
 
 /* ----- the edit window under the selected note ----- */
+const LEN_BASES = [1, 1 / 2, 1 / 4, 1 / 8, 1 / 16, 1 / 32]; // the 音価 slider, whole ... 32nd (of a whole note)
+const MAX_FRET = 22;
+// { k, dot } for a step's length; k = nearest value when it is not a standard one
+function lenPos(len, grid) {
+  const v = len / grid;
+  for (let k = 0; k < LEN_BASES.length; k++) {
+    if (Math.abs(v - LEN_BASES[k]) < 1e-9) return { k, dot: false };
+    if (Math.abs(v - LEN_BASES[k] * 1.5) < 1e-9) return { k, dot: true };
+  }
+  let best = 0;
+  LEN_BASES.forEach((b, k) => { if (Math.abs(Math.log2(v / b)) < Math.abs(Math.log2(v / LEN_BASES[best]))) best = k; });
+  return { k: best, dot: false };
+}
+// a bend release's amount: its own, else the bend it lets down (same string and fret), else full
+function releaseBend(i) {
+  const st = ed.song.steps[i];
+  if (st.bend) return st.bend;
+  const [s, f] = st.notes[0];
+  const from = ed.song.steps.slice(0, i).reverse().find(x => x.tech === "b" && x.notes[0][0] === s && x.notes[0][1] === f);
+  return from ? from.bend : 2;
+}
+
 function edShowPop() {
   const pop = $("edPop");
   const g = ed.sel && $("edTab").querySelector(`.tab-step[data-i="${ed.sel.i}"]`);
   if (!ed.popOpen || !g || ed.play || ed.song.errors.length) { pop.hidden = true; return; }
-  const st = ed.song.steps[ed.sel.i], s = ed.sel.s;
-  $("popWhere").textContent = `${edWhere(ed.sel.i)}・${s}弦`;
-  $("popStrings").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.s === s)));
-  const fret = (st.notes.find(n => n[0] === s) || [])[1];
-  $("popPad").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(fret != null && b.dataset.fret === String(fret))));
-  $("popLen").innerHTML = lenChoices(ed.song.grid, st.len).map(([n, l]) => `<option value="${n}">${l}</option>`).join("");
-  $("popLen").value = st.len;
+  const i = ed.sel.i, st = ed.song.steps[i], s = ed.sel.s;
+  const note = st.notes.length > 0 || !!st.tie || ed.noteDraft === i;
+  $("popWhere").textContent = edWhere(i);
+  $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String((b.dataset.kind === "note") === note)));
+  $("popNote").hidden = !note;
+  $("popFrets").querySelectorAll(".fret-row").forEach(row => {
+    const rs = +row.dataset.s, n = st.notes.find(x => x[0] === rs), f = n ? n[1] : -1;
+    const range = row.querySelector("input");
+    if (document.activeElement !== range || +range.value !== f) range.value = Math.min(f, MAX_FRET);
+    row.querySelector("output").textContent = f < 0 ? "x" : f;
+    row.classList.toggle("sel", rs === s);
+    row.classList.toggle("on", f >= 0);
+  });
+  if (document.activeElement !== $("popChord")) $("popChord").value = st.chord || "";
   $("popLoose").checked = !!st.loose;
   $("popLoose").disabled = !st.notes.length;
-  const single = !st.chord && st.notes.length === 1, tech = st.tech ? st.tech + (st.tech === "b" ? st.bend : "") : "";
-  $("popTech").querySelectorAll("button").forEach(b => { b.disabled = !single; b.setAttribute("aria-pressed", String(single && b.dataset.tech === tech)); });
-  if (document.activeElement !== $("popChord")) $("popChord").value = st.chord || "";
+  const single = !st.chord && st.notes.length === 1;
+  $("popTech").disabled = !single;
+  $("popTech").value = single && st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(i) : "") : "";
+  const lp = lenPos(st.len, ed.song.grid);
+  $("popLen").value = lp.k;
+  $("popDot").checked = lp.dot;
+  $("popDot").disabled = lp.k === LEN_BASES.length - 1;
   pop.hidden = false;
   // just below the note, kept inside the editor's width
   const body = $("edBody").getBoundingClientRect(), hl = g.querySelector(".tab-hl").getBoundingClientRect();
@@ -178,10 +213,11 @@ function edShowPop() {
   pop.style.left = left + "px";
   pop.style.top = (hl.bottom - body.top + 4) + "px";
   const r = pop.getBoundingClientRect();
-  if (r.bottom > innerHeight) window.scrollBy(0, Math.min(r.bottom - innerHeight + 8, r.top - 120));
+  if (r.bottom > innerHeight && !pop.contains(document.activeElement)) window.scrollBy(0, Math.min(r.bottom - innerHeight + 8, r.top - 120));
 }
 
 function edSelect(i, s, open) {
+  if (!ed.sel || ed.sel.i !== i) ed.noteDraft = null;
   ed.sel = { i, s };
   ed.digit = "";
   if (open != null) ed.popOpen = open;
@@ -191,19 +227,30 @@ function edSelect(i, s, open) {
 
 /* ----- edits ----- */
 // apply a change to a copy of the steps and write the result back as text
-function edChange(fn) {
+// opts.grid: switch the song to a finer grid first (all lengths scaled); opts.merge: a key that makes
+// repeated changes of the same control (a slider being dragged) one undo step
+function edChange(fn, opts = {}) {
   if (ed.song.errors.length) return;
+  let grid = ed.song.grid;
   const steps = ed.song.steps.map(cloneStep);
-  const sel = fn(steps, ed.song);
+  let prefix = (/^\s*@(4|8|16|32)\b\s*/.exec(ed.text) || [""])[0];
+  if (opts.grid && opts.grid > grid) {
+    steps.forEach(st => { st.len *= opts.grid / grid; });
+    grid = opts.grid; prefix = `@${grid} `;
+  }
+  const sel = fn(steps, { ...ed.song, grid });
   if (sel === false) return;
-  const prefix = (/^\s*@(4|8|16)\b\s*/.exec(ed.text) || [""])[0];
-  edSetText(steps.length ? stepsToText(steps, ed.song.grid, ed.song.timeSig, prefix) : prefix.trim(), sel);
+  edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix) : prefix.trim(), sel, opts.merge);
 }
 
-function edSetText(text, sel) {
+function edSetText(text, sel, merge) {
   if (text === ed.text) return;
-  ed.undo.push({ text: ed.text, sel: ed.sel });
-  if (ed.undo.length > 200) ed.undo.shift();
+  const now = performance.now();
+  if (!(merge && ed.merge === merge && now - ed.mergeAt < 2000)) {
+    ed.undo.push({ text: ed.text, sel: ed.sel });
+    if (ed.undo.length > 200) ed.undo.shift();
+  }
+  ed.merge = merge || null; ed.mergeAt = now;
   ed.redo = [];
   ed.text = text;
   if (sel) ed.sel = sel;
@@ -232,10 +279,10 @@ function setFret(st, s, f) {
 }
 const restStep = len => ({ notes: [], len });
 
-function edFret(f) {
+function edFret(f, string, merge) {
   if (!ed.sel) return;
-  const { i, s } = ed.sel;
-  edChange(steps => { setFret(steps[i], s, f); });
+  const i = ed.sel.i, s = string || ed.sel.s;
+  edChange(steps => { setFret(steps[i], s, f); return { i, s }; }, { merge });
 }
 
 // "h" "p" "s" "b2" "b1" "d" or "" (none); the same one again turns it off
@@ -243,12 +290,12 @@ function edTech(v, toggle) {
   if (!ed.sel) return;
   const st = ed.song.steps[ed.sel.i];
   if (st.chord || st.notes.length !== 1) { edStatus("奏法は単音にだけ付けられます"); return; }
-  const cur = st.tech ? st.tech + (st.tech === "b" ? st.bend : "") : "";
+  const cur = st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(ed.sel.i) : "") : "";
   if (toggle && cur === v) v = "";
   const { i } = ed.sel;
   edChange(steps => {
     delete steps[i].tech; delete steps[i].bend;
-    if (v) { steps[i].tech = v[0]; if (v[0] === "b") steps[i].bend = +v[1]; }
+    if (v) { steps[i].tech = v[0]; if (v[1]) steps[i].bend = +v[1]; }
   });
 }
 
@@ -256,6 +303,17 @@ function edLen(len) {
   if (!ed.sel) return;
   const { i } = ed.sel;
   edChange(steps => { steps[i].len = len; });
+}
+// from the 音価 slider: k = whole ... 32nd, dot = dotted; a value finer than the grid makes the grid finer
+function edLenValue(k, dot) {
+  if (!ed.sel) return;
+  if (k === LEN_BASES.length - 1) dot = false;
+  const v = LEN_BASES[k] * (dot ? 1.5 : 1);
+  let grid = ed.song.grid;
+  while (!Number.isInteger(v * grid) && grid < 32) grid *= 2;
+  if (!Number.isInteger(v * grid)) return;
+  const { i } = ed.sel;
+  edChange(steps => { steps[i].len = v * grid; }, { grid, merge: "len" });
 }
 function edLenStep(dir) {
   if (!ed.sel) return;
@@ -416,24 +474,28 @@ function edApplyText() {
 
 /* ----- wiring ----- */
 {
-  const strings = $("popStrings");
+  // one fret slider per string (1st string on top, as on the TAB); far left = x (not played)
+  const frets = $("popFrets");
   for (let s = 1; s <= 6; s++) {
-    const b = document.createElement("button"); b.type = "button"; b.dataset.s = s;
-    b.textContent = s; b.title = `${s}弦（${STRING_LABELS[s - 1]}）・Shift+${s}`;
-    strings.append(b);
+    const row = document.createElement("label"); row.className = "fret-row"; row.dataset.s = s;
+    row.innerHTML = `<span class="fret-str">${s}<small>${STRING_LABELS[s - 1]}</small></span>` +
+      `<input type="range" min="-1" max="${MAX_FRET}" step="1" aria-label="${s}弦のフレット"><output></output>`;
+    const range = row.querySelector("input");
+    range.addEventListener("input", () => { const f = +range.value; edFret(f < 0 ? null : f, s, "fret" + s); });
+    range.addEventListener("pointerdown", () => { if (ed.sel && ed.sel.s !== s) { ed.sel = { i: ed.sel.i, s }; edDrawCursor(); edStatus(); edShowPop(); } });
+    frets.append(row);
   }
-  strings.addEventListener("click", e => { const b = e.target.closest("button"); if (b && ed.sel) edSelect(ed.sel.i, +b.dataset.s); });
-  const pad = $("popPad");
-  for (let f = 0; f <= 15; f++) {
-    const b = document.createElement("button"); b.type = "button"; b.dataset.fret = f; b.textContent = f;
-    pad.append(b);
-  }
-  const x = document.createElement("button"); x.type = "button"; x.dataset.fret = "x"; x.textContent = "消す"; x.className = "clear"; x.title = "この弦の音を消す（Delete）";
-  pad.append(x);
-  pad.addEventListener("click", e => { const b = e.target.closest("button"); if (b) edFret(b.dataset.fret === "x" ? null : +b.dataset.fret); });
-  $("popTech").addEventListener("click", e => { const b = e.target.closest("button"); if (b) edTech(b.dataset.tech, false); });
 }
-$("popLen").addEventListener("change", e => edLen(+e.target.value));
+$("popKind").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b || !ed.sel) return;
+  const st = ed.song.steps[ed.sel.i];
+  if (b.dataset.kind === "rest") { ed.noteDraft = null; if (st.notes.length || st.tie) edRest(); else edShowPop(); }
+  else { ed.noteDraft = ed.sel.i; edShowPop(); }
+});
+$("popTech").addEventListener("change", e => edTech(e.target.value, false));
+$("popLen").addEventListener("input", () => edLenValue(+$("popLen").value, $("popDot").checked));
+$("popDot").addEventListener("change", () => edLenValue(+$("popLen").value, $("popDot").checked));
 $("popLoose").addEventListener("change", e => edLoose(e.target.checked));
 $("popChordSet").addEventListener("click", () => { edChord($("popChord").value.trim()); $("popChord").blur(); });
 $("popChord").addEventListener("keydown", e => {
@@ -442,7 +504,6 @@ $("popChord").addEventListener("keydown", e => {
 });
 $("popInsBefore").addEventListener("click", () => edInsert(false));
 $("popInsAfter").addEventListener("click", () => edInsert(true));
-$("popRest").addEventListener("click", edRest);
 $("popDel").addEventListener("click", edDelete);
 $("popClose").addEventListener("click", () => { ed.popOpen = false; edShowPop(); });
 
@@ -497,7 +558,9 @@ window.addEventListener("beforeunload", e => { if (edDirty()) { edSaveDraft(); }
 // keyboard (PC), DTM style
 document.addEventListener("keydown", e => {
   if ($("view-edit").hidden || document.querySelector("dialog[open]")) return;
-  if (e.target.closest("input, textarea, select")) {
+  const control = e.target.closest("input[type=range], input[type=checkbox]");
+  if (control && /^(Arrow|Home$|End$|Page)/.test(e.key)) return;
+  if (!control && e.target.closest("input, textarea, select")) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); edSave(); }
     return;
   }
@@ -543,7 +606,7 @@ document.addEventListener("keydown", e => {
   else if (k === "Enter") { done(); edInsert(!e.shiftKey); }
   else if (key === "h" || key === "p" || key === "s") { done(); edTech(key, true); }
   else if (key === "b") { done(); edTech(e.shiftKey ? "b1" : "b2", true); }
-  else if (key === "d") { done(); edTech("d", true); }
+  else if (key === "d") { done(); edTech(e.shiftKey ? "d1" : "d2", true); }
   else if (key === "r") { done(); edRest(); }
   else if (key === "l") { done(); edLoose(!ed.song.steps[ed.sel.i].loose); }
   else if (k === "[") { done(); edLenStep(-1); }
