@@ -12,7 +12,10 @@ function renderSongList() {
     play.addEventListener("click", () => { setCurrentSongId(s.id); fillSongSelect(); loadPractice(s.id); location.hash = "practice"; });
     const edit = document.createElement("button"); edit.type = "button"; edit.textContent = s.preset ? "コピーして編集" : "編集";
     edit.addEventListener("click", () => openEditor(s.preset ? { ...s, id: null, title: s.title + "（コピー）" } : s));
+    const exp = document.createElement("button"); exp.type = "button"; exp.textContent = "書き出す";
+    exp.addEventListener("click", () => exportSongs([s], s.title));
     row.append(name, play, edit);
+    if (!s.preset) row.append(exp);
     if (!s.preset) {
       const del = document.createElement("button"); del.type = "button"; del.textContent = "削除"; del.className = "danger";
       del.addEventListener("click", () => {

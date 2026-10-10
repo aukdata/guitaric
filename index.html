@@ -82,6 +82,11 @@
   <main id="view-editor" class="view" hidden>
     <section class="panel">
       <h2>曲の一覧</h2>
+      <div class="controls file-row">
+        <button id="eExportAll" type="button">自分の曲をすべて書き出す</button>
+        <label class="filebtn" for="eImport">ファイルから読み込む<input id="eImport" type="file" accept=".json,.txt,application/json,text/plain" multiple></label>
+        <span id="eFileMsg" class="saved" role="status"></span>
+      </div>
       <div id="eList" class="song-list"></div>
     </section>
 
@@ -206,6 +211,7 @@
 <script src="js/practice.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/tabedit.js"></script>
+<script src="js/songfile.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

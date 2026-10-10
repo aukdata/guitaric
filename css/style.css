@@ -207,3 +207,4 @@ label.inline select { padding: 7px 8px; }
   .editor .vrow select { padding: 4px 4px; font-size: .85rem; }
   .editor .vchord input { width: 6em; padding: 4px 6px; }
 }
+.file-row { margin-bottom: 8px; }
