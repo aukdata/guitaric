@@ -50,7 +50,7 @@ function restartPractice() {
   practice.startedAt = 0;
   $("pResult").hidden = true;
   practice.tab.clearStates(); practice.marks = [];
-  gotoStep(playableIndex(0));
+  gotoStep(0);
 }
 
 function gotoStep(i) {
@@ -183,6 +183,12 @@ function practiceTick(buf) {
   practice.lastOk = false;
   if (ctx.currentTime < practice.mutedUntil) return;
   if (practice.idx >= steps.length) return;
+  // cued on a rest: wait there, and the first strum is judged against the next note
+  if (!steps[practice.idx].notes.length) {
+    if (!strum) return;
+    gotoStep(playableIndex(practice.idx));
+    if (practice.idx >= steps.length) return;
+  }
   const st = steps[practice.idx];
   if (strum) { practice.fresh = true; practice.okRun = 0; practice.strummed = true; practice.wrongShown = false; }
   // time since the attack itself (the onset event arrives ~0.1 s late, but carries its own time)
@@ -281,7 +287,7 @@ function stopModel(natural) {
   model.sources = []; model.timers = []; model.gain = null;
   if (practice.tab) practice.tab.setPlaying(-1);
   if (wasPlaying && model.from != null && practice.song) {
-    const to = transport.stopMode === "return" ? model.from : playableIndex(model.cur);
+    const to = transport.stopMode === "return" ? model.from : model.cur;
     if (to !== practice.idx && to < practice.song.steps.length) gotoStep(to);
     else if (practice.tab) practice.tab.scrollTo(practice.idx);
   }
@@ -320,15 +326,12 @@ transport.listeners.push(key => {
 $("pMic").addEventListener("click", () => (practice.stream ? stopPracticeMic() : startPracticeMic()));
 $("pAgain").addEventListener("click", restartPractice);
 $("pPrev").addEventListener("click", () => {
-  let i = practice.idx - 1;
-  while (i > 0 && !practice.song.steps[i].notes.length) i--;
-  if (i >= 0) gotoStep(i);
+  if (practice.idx > 0) gotoStep(Math.min(practice.idx, practice.song.steps.length) - 1);
 });
 $("pNext").addEventListener("click", () => {
   if (practice.idx >= practice.song.steps.length) return;
-  practice.firstTry[practice.idx] = false;
-  markStep(practice.idx, "skipped");
-  gotoStep(playableIndex(practice.idx + 1));
+  if (practice.song.steps[practice.idx].notes.length) { practice.firstTry[practice.idx] = false; markStep(practice.idx, "skipped"); }
+  gotoStep(practice.idx + 1);
 });
 $("pModel").addEventListener("click", playModel);
 document.addEventListener("keydown", e => {
