@@ -1,5 +1,5 @@
 /* ===== editor: write songs as text, preview the TAB, save in the browser ===== */
-let editingId = null;
+let editingId = null, editingGrid = 8; // grid (cells per whole note) of the song being edited
 
 function renderSongList() {
   const list = $("eList");
@@ -29,6 +29,7 @@ function renderSongList() {
 
 function openEditor(s) {
   editingId = s ? s.id : null;
+  editingGrid = (s && s.grid) || 8;
   $("eTitle").value = s ? s.title : "";
   $("eBpm").value = s ? s.bpm || 80 : 80;
   $("eText").value = s ? s.text : "";
@@ -37,7 +38,7 @@ function openEditor(s) {
 }
 
 function previewEditor() {
-  const song = buildSong({ text: $("eText").value });
+  const song = buildSong({ text: $("eText").value, grid: editingGrid });
   $("eErrors").textContent = song.errors.join(" / ");
   if (song.steps.length) renderTab($("eTab"), song);
   else $("eTab").innerHTML = '<span class="empty">入力するとここにTAB譜が表示されます</span>';
@@ -45,10 +46,11 @@ function previewEditor() {
 }
 
 function saveEditor() {
-  const text = $("eText").value.trim(), song = buildSong({ text });
+  const text = $("eText").value.trim(), song = buildSong({ text, grid: editingGrid });
   if (!song.steps.length) return;
   const list = loadUserSongs();
   const entry = { id: editingId || "song-" + Date.now().toString(36), title: $("eTitle").value.trim() || "無題の曲", bpm: +$("eBpm").value || 80, text };
+  if (editingGrid !== 8) entry.grid = editingGrid;
   const at = list.findIndex(x => x.id === entry.id);
   if (at >= 0) list[at] = entry; else list.unshift(entry);
   if (!saveUserSongs(list)) { $("eErrors").textContent = "このブラウザでは保存できませんでした"; return; }

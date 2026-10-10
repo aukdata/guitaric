@@ -76,7 +76,8 @@ function chordPitchClasses(name) {
  *   r                   rest
  *   C*4                 the chord strummed 4 times in its bar
  *   C?  6-3?            judged loosely: any strum / note passes
- *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note)
+ *   3-7b  3-7d          bend up (chōking) / release a pre-bent note (judged loosely)
+ *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  */
 function parseSongText(text, opts = {}) {
   const grid = opts.grid || 8, beats = (opts.timeSig || [4, 4])[0];
@@ -89,11 +90,14 @@ function parseSongText(text, opts = {}) {
     for (const tok of bar.split(/\s+/).filter(Boolean)) {
       // a trailing "?" marks a step judged loosely (any strum or note passes)
       const loose = /\?(:|$)/.test(tok);
-      const [body, lenStr] = tok.replace("?", "").split(":");
+      let [body, lenStr] = tok.replace("?", "").split(":");
       const len = lenStr ? parseInt(lenStr, 10) : null;
       if (lenStr && !(len > 0)) { errors.push(`「${tok}」の長さが読めません`); continue; }
       if (/^[rR]$/.test(body)) { items.push({ notes: [], len: len || 1 }); continue; }
       const extra = loose ? { loose: true } : {};
+      // "3-7b" bend up (chōking), "3-7d" release a pre-bent note: shown on the TAB, judged loosely
+      const bend = /^\d-\d+[bd]$/.test(body) ? body.slice(-1) : null;
+      if (bend) { body = body.slice(0, -1); extra.loose = true; extra.bend = bend === "b" ? "up" : "down"; }
       if (/^\d-\d+(\+\d-\d+)*$/.test(body)) {
         const notes = body.split("+").map(p => p.split("-").map(Number));
         const bad = notes.find(([s, f]) => s < 1 || s > 6 || f > 24);
@@ -125,7 +129,8 @@ const PRESET_SONGS = [
   { id: "preset-minor", title: "マイナー進行", bpm: 80, text: "Am Dm E Am" },
   { id: "preset-change", title: "持ち替え練習 C⇔G", bpm: 70, text: "| C G | C G | Am F | C G |" },
   { id: "preset-scale", title: "Cメジャースケール", bpm: 70, text: "5-3 4-0 4-2 4-3 3-0 3-2 2-0 2-1 2-0 3-2 3-0 4-3 4-2 4-0 5-3:2" },
-  { id: "preset-penta", title: "Aマイナーペンタのリフ", bpm: 80, text: "6-5 6-8 5-5 5-7 4-5 4-7 5-7 5-5 6-8 6-5:2 r 6-5+5-7:4" }
+  { id: "preset-penta", title: "Aマイナーペンタのリフ", bpm: 80, text: "6-5 6-8 5-5 5-7 4-5 4-7 5-7 5-5 6-8 6-5:2 r 6-5+5-7:4" },
+  { id: "preset-penta-solo", title: "Aマイナーペンタのソロ（16分）", bpm: 60, grid: 16, text: "| r:10 3-5+4-5:1 4-7:1 4-5:1 5-7:1 5-5:2 | 5-3:4 5-7:1 4-5:1 4-5:1 5-7:1 4-5:4 r:1 4-5:1 4-7:1 3-5:1 | 3-7b:6 3-7d:2 3-5:8 | r:2 3-9:1 1-8:1 3-9:1 3-7:1 3-5:1 3-7:1 3-7b:2 1-5:2 3-7d:2 3-5:2 | 4-7:1 4-5:1 4-7:1 4-5:1 5-7:1 5-5:1 5-3:1 5-5:1 5-3:4 r:1 4-5:1 4-7:1 3-5:1 | 3-5:2 4-7:1 3-5:1 3-7:1 3-9:1 2-8:2 3-9:2 2-8:3 3-9:1 2-8:2 | 2-10:4 r:1 2-8:1 2-10:1 1-8:1 1-10b:4 1-10d:2 1-8:1 1-10:1 | 1-8:8 1-15b:4 r:3 2-15b:1 | 2-13:2 2-15:1 r:1 2-15d:2 2-13:1 2-15:1 2-13:8 |" }
 ];
 
 const SONG_KEY = "guitaric.songs";
