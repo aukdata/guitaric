@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Guitaric</title>
+<meta name="description" content="ギターの音を聞いて、TAB譜どおりに弾けているかを判定する練習アプリ">
+<meta name="theme-color" content="#b0521c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="appbar">
+    <h1>GUITARIC</h1>
+    <nav class="tabs" aria-label="モード">
+      <button type="button" class="tab" data-view="practice">練習</button>
+      <button type="button" class="tab" data-view="editor">曲を作る</button>
+      <button type="button" class="tab" data-view="analyze">解析</button>
+    </nav>
+  </header>
+
+  <main id="view-practice" class="view" hidden>
+    <section class="panel soon">
+      <h2>練習</h2>
+      <p>TAB譜を見ながら弾くと、正しく弾けたところで次へ進むモードです。現在作成中です。</p>
+    </section>
+  </main>
+
+  <main id="view-editor" class="view" hidden>
+    <section class="panel soon">
+      <h2>曲を作る</h2>
+      <p><code>C G Am F</code> のようなコード進行や、1音ずつのTABを打ち込むモードです。現在作成中です。</p>
+    </section>
+  </main>
+
+  <main id="view-analyze" class="view" hidden>
+  <p class="lead">ギターの音から構成音とコードを推定します</p>
+  <section class="panel controls" aria-label="入力と録音">
+    <button id="micBtn" class="primary" type="button"><span class="dot"></span>マイクを開始</button>
+    <button id="recBtn" type="button" disabled><span class="dot"></span>録音</button>
+    <span id="recTimer" class="timer" hidden>0:00.0</span>
+    <label class="filebtn" for="fileInput">音声ファイルを解析<input id="fileInput" type="file" accept="audio/*"></label>
+    <select id="sampleSel" aria-label="サンプルコード">
+      <option value="C">C</option><option value="G">G</option><option value="Am">Am</option>
+      <option value="Em">Em</option><option value="D">D</option><option value="E7">E7</option>
+      <option value="Am7">Am7</option><option value="Cmaj7">Cmaj7</option><option value="Dm">Dm</option>
+      <option value="F">F（バレー）</option><option value="E5">E5（パワーコード）</option><option value="A2">単音 A2</option>
+    </select>
+    <button id="sampleBtn" type="button">サンプルを鳴らす</button>
+    <div class="meter" aria-label="入力レベル"><i id="meterBar"></i></div>
+    <p id="status" class="status">「マイクを開始」でギターの音を拾います。マイクが使えない環境では、音声ファイルかサンプルで試せます。</p>
+  </section>
+
+  <div class="grid">
+    <section class="panel" aria-live="polite">
+      <h2>コード</h2>
+      <div id="chord" class="chord stale">—</div>
+      <div id="chordSub" class="chord-sub">音を鳴らすとここに表示されます</div>
+      <div id="cands" class="cands"></div>
+    </section>
+    <section class="panel">
+      <h2>構成音（低い順）</h2>
+      <div id="notes" class="notes"><span class="empty">検出された音名がここに並びます。枠付きはベース音です。</span></div>
+      <div class="tuner">
+        <div class="tuner-row"><span>最も強い音</span><span id="tunerText">—</span></div>
+        <div class="scale"><div id="needle" class="needle"></div></div>
+        <div class="tuner-row"><span>−50¢</span><span>0</span><span>+50¢</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>クロマ（音名ごとの強さ）</h2>
+    <canvas id="chroma" class="chroma" aria-label="12音名の強さのグラフ"></canvas>
+  </section>
+
+  <section class="panel">
+    <h2>録音</h2>
+    <div id="recs" class="recs"><span class="empty">マイク開始後に「録音」を押すと、ここにWAVファイルとして保存されます。</span></div>
+  </section>
+
+  <footer>解析は16384点のFFTスペクトルを圧縮し、倍音を加算して音高候補を求め、見つけた音の倍音を差し引きながら複数の音を取り出しています。構成音のピッチクラスをコードの型と照合し、最も説明できる候補を表示します。録音はマイク入力をそのまま16bit PCMのWAVに書き出します。</footer>
+  </main>
+</div>
+<script src="js/core.js"></script>
+<script src="js/analyze.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
