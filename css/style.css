@@ -280,3 +280,6 @@ svg.tab { padding: 0; border-radius: 0; flex: none; background: none; }
 /* ● mic: red dot; filled red while listening */
 .ed-toolbar .icon.mic { color: var(--bad); font-size: 1.1rem; }
 .ed-toolbar .icon.mic[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); color: var(--surface); }
+
+/* phones: no double-tap zoom (fast taps on buttons and the TAB stay taps); pinch zoom still works */
+html, body, button, svg, .tab-scroll { touch-action: manipulation; }
