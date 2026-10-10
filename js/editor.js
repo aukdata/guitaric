@@ -34,15 +34,17 @@ function openEditor(s) {
   $("eBpm").value = s ? s.bpm || 80 : 80;
   $("eText").value = s ? s.text : "";
   $("eHeading").textContent = editingId ? "曲を編集" : "新しい曲";
+  if (typeof vedit !== "undefined") { vedit.sel = null; vedit.undo.length = 0; }
   previewEditor();
 }
 
 function previewEditor() {
   const song = buildSong({ text: $("eText").value, grid: editingGrid });
   $("eErrors").textContent = song.errors.join(" / ");
-  if (song.steps.length) renderTab($("eTab"), song);
-  else $("eTab").innerHTML = '<span class="empty">入力するとここにTAB譜が表示されます</span>';
+  const tab = song.steps.length ? renderTab($("eTab"), song) : null;
+  if (!tab) $("eTab").innerHTML = '<span class="empty">入力するか「TABで書き始める」を押すと、ここにTAB譜が表示されます</span>';
   $("eSave").disabled = !song.steps.length;
+  if (typeof refreshVisualEdit === "function") refreshVisualEdit(song, tab);
 }
 
 function saveEditor() {
@@ -66,7 +68,7 @@ $("eText").addEventListener("input", previewEditor);
 $("eSave").addEventListener("click", saveEditor);
 $("eNew").addEventListener("click", () => openEditor(null));
 document.querySelectorAll("[data-insert]").forEach(b => b.addEventListener("click", () => {
-  $("eText").value = b.dataset.insert; previewEditor();
+  $("eText").value = b.dataset.insert; $("eText").dispatchEvent(new Event("input"));
 }));
 
 renderSongList();
