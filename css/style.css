@@ -191,7 +191,7 @@ body.editing .wrap { max-width: none; padding-top: 0; padding-bottom: 48px; }
 .ed-toolbar button.play { min-width: 46px; }
 .ed-toolbar button.play.on { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 .ed-title { font: inherit; font-weight: 700; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; width: 14em; min-width: 0; }
-#edSave[data-dirty="1"]::after { content: "●"; font-size: .6rem; margin-left: 2px; }
+#edSave[data-dirty="1"]::after { content: ""; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .ed-toolbar .seg button, .seg button { border: 0; border-radius: 0; border-left: 1px solid var(--line); background: var(--surface); padding: 6px 10px; font-size: .82rem; }
 .seg button:first-child { border-left: 0; }
@@ -278,8 +278,8 @@ svg.tab { padding: 0; border-radius: 0; flex: none; background: none; }
 .ed-toolbar, .tb-main { min-width: 0; }
 .ed-toolbar button { white-space: nowrap; flex: none; }
 /* ● mic: red dot; filled red while listening */
-.ed-toolbar .icon.mic { color: var(--bad); font-size: 1.1rem; }
-.ed-toolbar .icon.mic[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); color: var(--surface); }
+.ed-toolbar .icon.mic { color: var(--accent); }
+.ed-toolbar .icon.mic[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 
 /* phones: no double-tap zoom (fast taps on buttons and the TAB stay taps); pinch zoom still works */
 html, body, button, svg, .tab-scroll { touch-action: manipulation; }
@@ -317,3 +317,6 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .menu-item.danger { color: var(--bad); }
 .ed-toolbar svg.ic { width: 1.05em; height: 1.05em; }
 .status:empty { display: none; }
+.tb-row { flex-wrap: wrap; }
+.tb-break { display: none; }
+@media (max-width: 720px) { .tb-break { display: block; flex-basis: 100%; height: 0; } .ed-toolbar .tb-row { row-gap: 8px; } }
