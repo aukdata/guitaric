@@ -10,6 +10,9 @@ const ICONS = {
   "corner-up-left": '<path d="M20 20v-7a4 4 0 0 0-4-4H4"/><path d="M9 14 4 9l5-5"/>',
   "ellipsis": '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   "mic": '<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/>',
+  "music-3": '<circle cx="12" cy="18" r="4"/><path d="M16 18V2"/>',
+  // quarter rest, drawn in the same stroke style (not part of Lucide)
+  "rest": '<path d="M10 3l4.5 5.5-3.5 3.5 4 5"/><path d="M15 17c-3-1.5-6.5.5-3 4.5"/>',
   "circle": '<circle cx="12" cy="12" r="10"/>',
   "plus": '<path d="M5 12h14"/><path d="M12 5v14"/>',
   "pencil": '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
@@ -25,7 +28,7 @@ const ICONS = {
   "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 };
 // play / stop / record dots read better filled
-const FILLED_ICONS = new Set(["play", "square", "circle", "skip-back"]);
+const FILLED_ICONS = new Set(["play", "square", "circle", "skip-back", "music-3"]);
 
 function iconSvg(name) {
   return `<svg class="ic${FILLED_ICONS.has(name) ? " filled" : ""}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${ICONS[name] || ""}</svg>`;

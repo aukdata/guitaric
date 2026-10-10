@@ -129,9 +129,15 @@
     <div id="edBody" class="ed-body">
       <div id="edTab" class="tab-scroll"></div>
       <div id="edPop" class="ed-pop" role="dialog" aria-label="音の編集" hidden>
-        <div class="pop-head"><span id="popWhere"></span><button id="popClose" type="button" class="icon" title="閉じる（Esc）" aria-label="閉じる"><i data-icon="x"></i></button></div>
-        <div id="popKind" class="seg pop-kind" role="radiogroup" aria-label="音符か休符か">
-          <button type="button" role="radio" data-kind="note">音符</button><button type="button" role="radio" data-kind="rest" title="休符（R）">休符</button>
+        <div class="pop-head">
+          <div id="popKind" class="seg pop-kind" role="radiogroup" aria-label="音符か休符か">
+            <button type="button" role="radio" class="icon" data-kind="note" title="音符" aria-label="音符"><i data-icon="music-3"></i></button><button type="button" role="radio" class="icon" data-kind="rest" title="休符（R）" aria-label="休符"><i data-icon="rest"></i></button>
+          </div>
+          <select id="popTech" aria-label="奏法" title="奏法">
+            <option value="">通常</option><option value="h">H</option><option value="p">P</option><option value="s">S</option>
+            <option value="b2">↑full</option><option value="b1">↑1/2</option><option value="d2">full↓</option><option value="d1">1/2↓</option>
+          </select>
+          <button id="popClose" type="button" class="icon pop-close" title="閉じる（Esc）" aria-label="閉じる"><i data-icon="x"></i></button>
         </div>
         <div id="popNote" class="pop-note">
           <div id="popFrets" class="pop-frets" aria-label="フレット"></div>
@@ -140,21 +146,14 @@
             <button id="popChordSet" type="button" title="コードを反映（C で入力欄へ）">反映</button>
             <label class="inline pop-loose" title="判定ゆるめ（L）"><input id="popLoose" type="checkbox">判定ゆるめ</label>
           </div>
-          <div class="pop-row"><span class="pop-label">奏法</span>
-            <select id="popTech" aria-label="奏法">
-              <option value="">通常</option><option value="h">H</option><option value="p">P</option><option value="s">S</option>
-              <option value="b2">↑full</option><option value="b1">↑1/2</option><option value="d2">full↓</option><option value="d1">1/2↓</option>
-            </select>
-          </div>
         </div>
-        <div class="pop-row pop-len"><span class="pop-label">音価</span>
+        <div class="pop-row pop-len">
           <div class="len-slider">
-            <input id="popLen" type="range" min="0" max="5" step="1" aria-label="音価">
-            <div class="len-ticks" aria-hidden="true"><span>全</span><span>2分</span><span>4分</span><span>8分</span><span>16分</span><span>32分</span></div>
+            <input id="popLen" type="range" min="0" max="9" step="1" aria-label="音価">
+            <div class="len-ticks" aria-hidden="true"><span>32</span><span>16</span><span class="dotted">付</span><span>8</span><span class="dotted">付</span><span>4</span><span class="dotted">付</span><span>2</span><span class="dotted">付</span><span>全</span></div>
           </div>
-          <label class="inline"><input id="popDot" type="checkbox">付点</label>
+          <output id="popLenText"></output>
         </div>
-        <hr class="pop-hr">
         <div class="pop-row actions">
           <button id="popInsBefore" type="button" title="前に挿入（Shift+Enter）">← 前に挿入</button>
           <button id="popInsAfter" type="button" title="後に挿入（Enter）">後に挿入 →</button>
