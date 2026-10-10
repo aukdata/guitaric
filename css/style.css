@@ -123,6 +123,7 @@ svg.tab { display: block; }
 .tab-chord { font: 700 14px var(--f-body); fill: var(--fg); text-anchor: middle; }
 .tab-tech { font: italic 600 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
 .tab-slur { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+.tab-fret.tab-tie { fill: var(--muted); font-size: 12px; }
 .tab-rest { font: 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
 .tab-step[data-playing] .tab-hl, .tab-step[data-playing] .tab-bg { fill: var(--accent-soft); }
 .tab-step[data-state="current"] .tab-hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }

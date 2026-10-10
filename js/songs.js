@@ -75,6 +75,7 @@ function chordPitchClasses(name) {
  *   6-3 5-2 4-0         string-fret single notes (one cell each)
  *   6-3+5-2             notes played together
  *   r                   rest
+ *   ~:8                 tie: the previous note keeps ringing (across a bar line too)
  *   C*4                 the chord strummed 4 times in its bar
  *   C?  6-3?            judged loosely: any strum / note passes
  *   4-7h  4-5p  5-5s    hammer-on / pull-off / slide into this note (shown on the TAB; the pitch is judged as usual)
@@ -97,6 +98,8 @@ function parseSongText(text, opts = {}) {
       const len = lenStr ? parseInt(lenStr, 10) : null;
       if (lenStr && !(len > 0)) { errors.push(`「${tok}」の長さが読めません`); continue; }
       if (/^[rR]$/.test(body)) { items.push({ notes: [], len: len || 1 }); continue; }
+      // "~" holds the previous note on (a tie): nothing new to play, so wait mode skips it like a rest
+      if (body === "~") { items.push({ notes: [], tie: true, len: len || 1 }); continue; }
       const extra = loose ? { loose: true } : {};
       // a technique letter after a single note: h p s (display only), b / b1 bend, d release
       const tech = /^\d-\d+(h|p|s|b[12]?|d)$/.exec(body);

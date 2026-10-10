@@ -100,7 +100,15 @@ function renderTab(container, song, opts = {}) {
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret" }, g); t.textContent = label;
     }
-    if (!st.notes.length) { const t = mk("text", { x: cx, y: TAB.top + TAB.row * 2.5 + 5, class: "tab-rest" }, g); t.textContent = "休"; }
+    const held = st.tie && song.steps.slice(0, i).reverse().find(x => x.notes.length);
+    if (held) {
+      // a tie shows the held frets in parentheses
+      for (const [s, f] of held.notes) {
+        const y = TAB.top + (s - 1) * TAB.row, label = `(${f})`;
+        mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
+        const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-tie" }, g); t.textContent = label;
+      }
+    } else if (!st.notes.length) { const t = mk("text", { x: cx, y: TAB.top + TAB.row * 2.5 + 5, class: "tab-rest" }, g); t.textContent = "休"; }
     if (opts.onStepClick) g.addEventListener("click", () => opts.onStepClick(i));
     return g;
   }

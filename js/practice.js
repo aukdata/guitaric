@@ -287,7 +287,10 @@ function playModel() {
     t += dur;
     if (!st.notes.length) return;
     // a note rings until the next one starts (the last one rings on)
-    const ring = i === steps.length - 1 ? 1.6 : dur + 0.05;
+    // ties after this step keep it ringing
+    let held = dur, k = i + 1;
+    while (steps[k] && steps[k].tie) held += steps[k++].len * cell;
+    const ring = k >= steps.length ? held + 1.6 : held + 0.05;
     const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + 0.05, i + 1);
     const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
     const src = ctx.createBufferSource(); src.buffer = b;
