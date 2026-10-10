@@ -235,3 +235,4 @@ kbd { font-family: var(--f-mono); font-size: .8rem; border: 1px solid var(--line
   .ed-pop { width: calc(100% - 0px); }
 }
 @media (hover: none) { #edKeys { display: none; } }
+.inline-label { font-size: .88rem; color: var(--muted); }

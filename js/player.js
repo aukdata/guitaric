@@ -1,10 +1,11 @@
 /* ===== playback of a song with the synthesized guitar (practice model and editor) ===== */
 // Schedules steps from..end of the song into `out`. onStep(i) fires as each step starts.
-// Returns { sources, timers, end } (end = audio time when the last step's length is over).
+// Returns { sources, timers, start, end } (audio times of the first step and of the end of the last step's length).
 function scheduleSong(song, from, bpm, out, onStep) {
   const steps = song.steps, cell = 60 / bpm * 4 / song.grid;
   const sources = [], timers = [];
   let t = ctx.currentTime + 0.15;
+  const start = t;
   for (let i = from; i < steps.length; i++) {
     const st = steps[i], dur = st.len * cell, start = t;
     timers.push(setTimeout(() => onStep(i), (start - ctx.currentTime) * 1000));
@@ -34,5 +35,5 @@ function scheduleSong(song, from, bpm, out, onStep) {
     src.connect(g); g.connect(out); src.start(start); src.stop(start + ring + 0.02);
     sources.push(src);
   }
-  return { sources, timers, end: t };
+  return { sources, timers, start, end: t };
 }

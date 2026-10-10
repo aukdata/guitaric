@@ -334,9 +334,30 @@ function edPlay() {
     if (ed.tab) { ed.tab.setPlaying(i); ed.tab.scrollTo(i); }
   });
   ed.play = { ...r, from, cur: from, gain };
+  edScheduleClicks(ed.song, from, bpm, r.start, gain);
   ed.play.timers.push(setTimeout(() => edStop(true), (r.end - ctx.currentTime) * 1000));
   $("edPlay").textContent = "■"; $("edPlay").setAttribute("aria-label", "停止"); $("edPlay").classList.add("on");
   edRender();
+}
+
+// clicks on every quarter or eighth note while playing, the first beat of each bar accented
+function edScheduleClicks(song, from, bpm, start, out) {
+  const div = ed.click;
+  if (!div) return;
+  const cell = 60 / bpm * 4 / song.grid, every = Math.max(1, song.grid / div), barCells = song.timeSig[0] * song.grid / 4;
+  const cells = song.steps.map(st => st.len), fromCell = cells.slice(0, from).reduce((a, b) => a + b, 0);
+  const total = cells.reduce((a, b) => a + b, 0);
+  for (let c = Math.ceil(fromCell / every) * every; c < total; c += every) {
+    const t = start + (c - fromCell) * cell, accent = c % barCells === 0, beat = c % (song.grid / 4) === 0;
+    const osc = ctx.createOscillator(), g = ctx.createGain(), len = 0.025;
+    osc.frequency.value = accent ? 2000 : beat ? 1500 : 1200;
+    const peak = accent ? 0.9 : beat ? 0.6 : 0.35;
+    const curve = new Float32Array(32).map((_, i) => Math.sin(Math.PI * i / 31) ** 2 * peak);
+    g.gain.setValueAtTime(0, t);
+    g.gain.setValueCurveAtTime(curve, t, len);
+    osc.connect(g); g.connect(out);
+    osc.start(t); osc.stop(t + len + 0.01);
+  }
 }
 
 // natural: the song played to its end (its last note is left to ring out)
@@ -462,6 +483,21 @@ document.querySelectorAll("[data-stop]").forEach(b => b.addEventListener("click"
   edShowStopMode();
 }));
 edShowStopMode();
+ed.click = (() => { try { return +(localStorage.getItem("guitaric.edClick") || 0); } catch (e) { return 0; } })();
+function edShowClick() {
+  document.querySelectorAll("[data-click]").forEach(b => b.setAttribute("aria-checked", String(+b.dataset.click === ed.click)));
+}
+document.querySelectorAll("[data-click]").forEach(b => b.addEventListener("click", () => {
+  ed.click = +b.dataset.click;
+  try { localStorage.setItem("guitaric.edClick", ed.click); } catch (e) {}
+  edShowClick();
+  // takes effect from where playback is now
+  if (ed.play) {
+    const { cur, from } = ed.play, s = ed.sel ? ed.sel.s : 1;
+    edStop(false); ed.sel = { i: cur, s }; edPlay(); ed.play.from = from;
+  }
+}));
+edShowClick();
 $("edUndo").addEventListener("click", () => edUndo(false));
 $("edRedo").addEventListener("click", () => edUndo(true));
 $("edAddBar").addEventListener("click", edAddBar);
