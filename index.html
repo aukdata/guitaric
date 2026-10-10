@@ -28,16 +28,81 @@
   </header>
 
   <main id="view-practice" class="view" hidden>
-    <section class="panel soon">
-      <h2>練習</h2>
-      <p>TAB譜を見ながら弾くと、正しく弾けたところで次へ進むモードです。現在作成中です。</p>
+    <section class="panel controls" aria-label="練習の操作">
+      <select id="pSong" aria-label="練習する曲"></select>
+      <button id="pMic" class="primary" type="button"><span class="dot"></span>マイクを開始</button>
+      <button id="pModel" type="button">お手本</button>
+      <button id="pRestart" type="button">はじめから</button>
+      <div class="meter" aria-label="入力レベル"><i id="pMeter"></i></div>
+    </section>
+
+    <section class="panel target" aria-live="polite">
+      <div class="target-row">
+        <div>
+          <h2>次に弾く</h2>
+          <div id="pTarget" class="target-name">—</div>
+          <div id="pWhere" class="target-where"></div>
+        </div>
+        <div class="target-side">
+          <span id="pProgress" class="progress">0 / 0</span>
+          <div class="stepper">
+            <button id="pPrev" type="button" aria-label="前へ">◀</button>
+            <button id="pNext" type="button" aria-label="とばす">▶</button>
+          </div>
+        </div>
+      </div>
+      <p id="pFeedback" class="feedback"></p>
+      <div id="pResult" class="result" hidden>
+        <p id="pResultText"></p>
+        <button id="pAgain" type="button" class="primary">もう一度</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>TAB譜</h2>
+      <div id="pTab" class="tab-scroll"></div>
+      <p class="hint">正しく弾けると次へ進みます。マスをタップするとそこから練習できます。</p>
     </section>
   </main>
 
   <main id="view-editor" class="view" hidden>
-    <section class="panel soon">
-      <h2>曲を作る</h2>
-      <p><code>C G Am F</code> のようなコード進行や、1音ずつのTABを打ち込むモードです。現在作成中です。</p>
+    <section class="panel">
+      <h2>曲の一覧</h2>
+      <div id="eList" class="song-list"></div>
+    </section>
+
+    <section class="panel editor">
+      <div class="editor-head">
+        <h2 id="eHeading">新しい曲</h2>
+        <button id="eNew" type="button">新しい曲</button>
+      </div>
+      <div class="field-row">
+        <label>タイトル<input id="eTitle" type="text" placeholder="無題の曲"></label>
+        <label class="bpm">BPM<input id="eBpm" type="number" min="30" max="240" value="80"></label>
+      </div>
+      <label>コードや音<textarea id="eText" rows="4" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="例：C G Am F"></textarea></label>
+      <p id="eErrors" class="errors"></p>
+      <div class="examples">
+        <span>例：</span>
+        <button type="button" data-insert="C G Am F">C G Am F</button>
+        <button type="button" data-insert="| C G | Am F |">| C G | Am F |</button>
+        <button type="button" data-insert="6-3 5-2 4-0 4-2:2 r 5-2+4-2">6-3 5-2 4-0 …</button>
+      </div>
+      <details class="howto">
+        <summary>書き方</summary>
+        <ul>
+          <li><code>C G Am F</code> … 1小節に1コード。<code>Bb</code> <code>F#m</code> <code>C7</code> <code>Gmaj7</code> なども書けます</li>
+          <li><code>| C G | Am F |</code> … 縦棒で小節を区切ると、1小節に複数のコードを入れられます</li>
+          <li><code>6-3</code> … 6弦3フレット（弦は 1＝細い弦 〜 6＝太い弦）</li>
+          <li><code>6-3+5-2</code> … 同時に弾く音、<code>r</code> … 休符</li>
+          <li><code>:2</code> … 長さ（例 <code>6-3:2</code> は8分音符2つ分）</li>
+        </ul>
+      </details>
+      <div id="eTab" class="tab-scroll"></div>
+      <div class="controls">
+        <button id="eSave" type="button" class="primary">保存</button>
+        <span id="eSaved" class="saved" role="status"></span>
+      </div>
     </section>
   </main>
 
@@ -91,7 +156,11 @@
   </main>
 </div>
 <script src="js/core.js"></script>
+<script src="js/songs.js"></script>
+<script src="js/tab.js"></script>
 <script src="js/analyze.js"></script>
+<script src="js/practice.js"></script>
+<script src="js/editor.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

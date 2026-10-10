@@ -1,9 +1,12 @@
 /* ===== app shell: mode switching, offline support ===== */
 const VIEWS = ["practice", "editor", "analyze"];
-const DEFAULT_VIEW = "analyze";
+const DEFAULT_VIEW = "practice";
 
 function showView(name) {
   if (!VIEWS.includes(name)) name = DEFAULT_VIEW;
+  // only one mode listens at a time
+  if (name !== "analyze" && micStream) stopMic();
+  if (name !== "practice" && practice.stream) stopPracticeMic();
   for (const v of VIEWS) $("view-" + v).hidden = v !== name;
   document.querySelectorAll(".tab").forEach(t => {
     if (t.dataset.view === name) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
@@ -11,6 +14,7 @@ function showView(name) {
   try { localStorage.setItem("guitaric.view", name); } catch (e) {}
   // canvases measure 0 while hidden; redraw once visible
   if (name === "analyze") drawChroma(shownChroma);
+  if (name === "practice" && practice.tab) practice.tab.scrollTo(practice.idx);
 }
 
 document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {

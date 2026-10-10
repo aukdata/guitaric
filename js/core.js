@@ -165,8 +165,8 @@ function createTracker() {
       hist.push(res.rms); if (hist.length > 5) hist.shift();
       if (onset) { acc.fill(0); seen.fill(0); bass = null; since = 0; } else since++;
       // the first frames of a strum are pick noise; let the strings settle before collecting evidence
-      if (since < TRACK.skip) return { chroma: acc.slice(), cands: shown };
-      if (!res.notes.length) { acc = acc.map(v => v * 0.85); return { chroma: acc.slice(), cands: shown }; }
+      if (since < TRACK.skip) return { chroma: acc.slice(), cands: shown, onset };
+      if (!res.notes.length) { acc = acc.map(v => v * 0.85); return { chroma: acc.slice(), cands: shown, onset }; }
       const c = chromaFromNotes(res.notes);
       acc = acc.map((v, i) => v * TRACK.hold + c[i]);
       // a pitch class heard in several frames of this strum stays part of the chord while it fades
@@ -182,7 +182,7 @@ function createTracker() {
       const name = cands[0] ? cands[0].name : null;
       if (name === pending) count++; else { pending = name; count = 1; }
       if (count >= 2 || shown === null) shown = cands;
-      return { chroma: norm, cands: shown, bassMidi: bass, lowPc };
+      return { chroma: norm, cands: shown, bassMidi: bass, lowPc, onset };
     }
   };
 }

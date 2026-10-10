@@ -93,3 +93,64 @@ code { font-family: var(--f-mono); background: var(--accent-soft); border-radius
   .tabs { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; border-radius: 0; border-width: 1px 0 0; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); justify-content: space-around; }
   .tab { flex: 1; padding: 10px 4px; }
 }
+
+/* ===== practice ===== */
+.target-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.target-name { font-family: var(--f-display); font-weight: 800; font-size: clamp(3.5rem, 13vw, 6rem); line-height: .95; color: var(--accent); overflow-wrap: anywhere; }
+.target-where { color: var(--muted); font-size: .9rem; min-height: 1.5em; }
+.target-side { display: grid; justify-items: end; gap: 10px; }
+.progress { font-family: var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.stepper { display: flex; gap: 6px; }
+.stepper button { padding: 8px 14px; }
+.feedback { margin: 12px 0 0; min-height: 1.6em; font-weight: 500; color: var(--muted); }
+.feedback[data-kind="ok"] { color: var(--good); }
+.feedback[data-kind="ng"] { color: var(--bad); }
+.result { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.result[hidden] { display: none; }
+.result p { margin: 0; }
+.hint { margin: 8px 0 0; color: var(--muted); font-size: .85rem; }
+
+/* ===== TAB staff ===== */
+.tab-scroll { overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+svg.tab { display: block; }
+.tab-lines line { stroke: var(--muted); stroke-opacity: .5; stroke-width: 1; }
+.tab-lines line.tab-bar { stroke-opacity: .8; stroke-width: 1.5; }
+.tab-label { font: 12px var(--f-mono); fill: var(--muted); }
+.tab-step { cursor: pointer; }
+.tab-hl { fill: transparent; }
+.tab-bg { fill: var(--surface); }
+.tab-fret { font: 500 14px var(--f-mono); fill: var(--fg); text-anchor: middle; }
+.tab-chord { font: 700 14px var(--f-body); fill: var(--fg); text-anchor: middle; }
+.tab-rest { font: 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
+.tab-step[data-state="current"] .tab-hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.tab-step[data-state="current"] .tab-bg { fill: var(--accent-soft); }
+.tab-step[data-state="current"] .tab-fret, .tab-step[data-state="current"] .tab-chord { fill: var(--accent); }
+.tab-step[data-state="done"] .tab-fret, .tab-step[data-state="done"] .tab-chord { fill: var(--good); }
+.tab-step[data-state="done-retry"] .tab-fret, .tab-step[data-state="done-retry"] .tab-chord { fill: var(--warn); }
+.tab-step[data-state="skipped"] .tab-fret, .tab-step[data-state="skipped"] .tab-chord { fill: var(--muted); }
+
+/* ===== editor ===== */
+.song-list { display: grid; }
+.song-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.song-row:first-child { border-top: 0; }
+.song-title { flex: 1 1 160px; font-weight: 500; }
+.song-title small { margin-left: 8px; color: var(--muted); font-weight: 400; font-size: .78rem; }
+.song-row button { padding: 6px 12px; font-size: .88rem; }
+button.danger { color: var(--bad); }
+.editor { display: grid; gap: 12px; }
+.editor-head { display: flex; justify-content: space-between; align-items: center; }
+.editor-head h2 { margin: 0; }
+.field-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.field-row label:first-child { flex: 1 1 200px; }
+.editor label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+.editor input, .editor textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
+.editor textarea { font-family: var(--f-mono); resize: vertical; font-size: 16px; }
+.editor input { font-size: 16px; }
+.bpm input { width: 6em; }
+.errors { margin: 0; color: var(--bad); font-size: .85rem; min-height: 1.2em; }
+.examples { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); }
+.examples button { font-family: var(--f-mono); font-size: .8rem; padding: 4px 10px; }
+.howto { font-size: .88rem; }
+.howto summary { cursor: pointer; color: var(--accent); }
+.howto ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.saved { color: var(--good); font-size: .88rem; }
