@@ -24,7 +24,11 @@ function renderTab(container, song, opts = {}) {
     endsBar[i] = cells % barCells === 0;
     if (endsBar[i] && i < song.steps.length - 1) bars.push([]);
   });
-  const left = TAB.pad + 18, height = TAB.top + TAB.row * 5 + 18;
+  // start of each step in cells, for beaming within a beat
+  const starts = [];
+  song.steps.reduce((a, st, i) => { starts[i] = a; return a + st.len; }, 0);
+  const staffBottom = TAB.top + TAB.row * 5, stemTop = staffBottom + 7, stemEnd = staffBottom + 36;
+  const left = TAB.pad + 18, height = stemEnd + 12;
   const states = [], at = []; // at[i] = { row, x, w }
   let groups = [], rowEls = [], playing = -1, lastWidth = 0;
 
@@ -67,6 +71,7 @@ function renderTab(container, song, opts = {}) {
       }
       for (const bx of [left, ...r.barEnds]) mk("line", { x1: bx, x2: bx, y1: TAB.top, y2: TAB.top + TAB.row * 5, class: "tab-bar" }, lines);
       for (const i of r.steps) groups[i] = drawStep(svg, i);
+      drawRhythm(svg, r.steps);
       rowEls.push(svg); frag.appendChild(svg);
     });
     container.replaceChildren(frag);
@@ -154,6 +159,75 @@ function renderTab(container, song, opts = {}) {
         }
       }
       x += gap;
+    }
+  }
+
+  // note value of a step as { base, dots } in quarter notes (base 4 = whole ... 0.25 = 16th)
+  function noteValue(st) {
+    const q = st.len * 4 / song.grid;
+    for (const base of [4, 2, 1, 0.5, 0.25, 0.125]) {
+      for (const dots of [0, 1, 2]) {
+        const v = base * (2 - 1 / 2 ** dots);
+        if (Math.abs(v - q) < 1e-6) return { base, dots };
+      }
+    }
+    // not a single standard value: show the largest one it holds
+    for (const base of [4, 2, 1, 0.5, 0.25, 0.125]) if (q >= base) return { base, dots: 0 };
+    return { base: 0.125, dots: 0 };
+  }
+
+  // rhythm under the staff, as in printed TAB: stems for half notes and shorter, flags or beams
+  // for 8ths and shorter (beamed within a beat), and dots for dotted values
+  function drawRhythm(svg, rowSteps) {
+    const gr = mk("g", { class: "tab-rhythm" }, svg);
+    const beatCells = song.grid / 4 * (4 / song.timeSig[1]);
+    const xOf = i => at[i].x + Math.min(at[i].w, TAB.minStep) / 2;
+    const beams = v => Math.max(0, Math.round(Math.log2(0.5 / v.base)) + 1); // 8th = 1, 16th = 2, 32nd = 3
+    const notes = rowSteps.filter(i => song.steps[i].notes.length || song.steps[i].tie).map(i => ({ i, x: xOf(i), v: noteValue(song.steps[i]) }));
+    for (const n of notes) {
+      if (n.v.base >= 4) continue; // whole notes have no stem
+      // a half note gets a shorter stem, like the open note head it stands for
+      const y2 = n.v.base >= 2 ? stemTop + (stemEnd - stemTop) / 2 : stemEnd;
+      mk("line", { x1: n.x, x2: n.x, y1: stemTop, y2, class: "tab-stem" }, gr);
+      for (let d = 0; d < n.v.dots; d++) mk("circle", { cx: n.x + 5 + d * 4.5, cy: y2 - 4, r: 1.7, class: "tab-dot" }, gr);
+    }
+    // beam groups: consecutive 8ths-or-shorter in the same beat (a rest or a longer note breaks it)
+    const groupsOf = [];
+    let cur = [];
+    rowSteps.forEach((i, k) => {
+      const st = song.steps[i], n = notes.find(m => m.i === i);
+      const beat = Math.floor(starts[i] / beatCells);
+      const prev = cur[cur.length - 1];
+      if (!n || n.v.base >= 1) { if (cur.length) groupsOf.push(cur); cur = []; return; }
+      if (prev && Math.floor(starts[prev.i] / beatCells) !== beat) { groupsOf.push(cur); cur = []; }
+      cur.push(n);
+    });
+    if (cur.length) groupsOf.push(cur);
+    for (const grp of groupsOf) {
+      if (grp.length === 1) {
+        // a lone 8th/16th: flags
+        const n = grp[0];
+        for (let b = 0; b < beams(n.v); b++) {
+          const y = stemEnd - b * 6;
+          mk("path", { d: `M${n.x} ${y} q8 -3 9 -12`, class: "tab-flag" }, gr);
+        }
+        continue;
+      }
+      // primary beam across the group, then the inner beams between notes that share them
+      mk("rect", { x: grp[0].x - 0.7, y: stemEnd - 3, width: grp[grp.length - 1].x - grp[0].x + 1.4, height: 3.5, class: "tab-beam" }, gr);
+      for (let lvl = 2; lvl <= 3; lvl++) {
+        const y = stemEnd - 3 - (lvl - 1) * 6;
+        grp.forEach((n, k) => {
+          if (beams(n.v) < lvl) return;
+          const next = grp[k + 1], prev = grp[k - 1];
+          if (next && beams(next.v) >= lvl) mk("rect", { x: n.x - 0.7, y, width: next.x - n.x + 1.4, height: 3.5, class: "tab-beam" }, gr);
+          else if (!(prev && beams(prev.v) >= lvl)) {
+            // a lone shorter note in the group: a stub pointing into the group
+            const toward = next ? 1 : -1, len = 8;
+            mk("rect", { x: toward > 0 ? n.x - 0.7 : n.x - len, y, width: len + 0.7, height: 3.5, class: "tab-beam" }, gr);
+          }
+        });
+      }
     }
   }
 
