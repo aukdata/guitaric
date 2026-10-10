@@ -69,7 +69,6 @@ function edSaveDraft() {
     localStorage.setItem(ED_DRAFT, JSON.stringify({ id: ed.id, grid: ed.grid, title: $("edTitle").value, bpm: +$("edBpm").value || 80, text: ed.text, saved: ed.saved }));
   } catch (e) {}
 }
-function edClearDraft() { try { localStorage.removeItem(ED_DRAFT); } catch (e) {} }
 
 // Opens a song (null = new song) in the editor and switches to it.
 function openEditor(s) {
@@ -187,6 +186,7 @@ function edShowPop() {
   $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String((b.dataset.kind === "note") === note)));
   $("popNote").hidden = !note;
   $("popTech").hidden = !note;
+  $("popPlay").disabled = !st.notes.length;
   $("popFrets").querySelectorAll(".fret-row").forEach(row => {
     const rs = +row.dataset.s, n = st.notes.find(x => x[0] === rs), f = n ? n[1] : -1;
     const range = row.querySelector("input");
@@ -328,8 +328,9 @@ function edLoose(on) {
 function edInsert(after, step) {
   if (!ed.sel) return;
   const { i, s } = ed.sel, at = after ? i + 1 : i;
-  ed.noteDraft = at; // the new step opens as a note to fill in
-  edChange(steps => { steps.splice(at, 0, step ? cloneStep(step) : restStep(steps[i].len)); return { i: at, s }; });
+  ed.noteDraft = at; // the new step opens as a note
+  // a copy of the current step (or of the given one: paste / duplicate)
+  edChange(steps => { steps.splice(at, 0, cloneStep(step || steps[i])); return { i: at, s }; });
 }
 
 function edDelete() {
@@ -435,10 +436,13 @@ function edPractice() {
   if (!edDirty() && !ed.id) { edGoPractice(); return; }
   if (!confirm(ED_DISCARD)) return;
   // the changes are dropped: practice the saved song (a song never saved has nothing to practice)
-  const id = ed.id;
-  ed.loaded = false;
-  edClearDraft();
-  if (id) openPractice(id); else location.hash = "songs";
+  edRevert();
+  if (ed.id) openPractice(ed.id); else location.hash = "songs";
+}
+// back to the song as saved (a new song: empty), so coming back to the editor shows that
+function edRevert() {
+  const s = ed.id && loadUserSongs().find(x => x.id === ed.id);
+  edLoad(s ? { id: s.id, grid: s.grid || 8, title: s.title, bpm: s.bpm || 80, text: s.text } : null);
 }
 // practice what the editor holds now, without saving it
 function edGoPractice() {
@@ -448,10 +452,8 @@ function edGoPractice() {
 }
 
 function edBack() {
-  if (edDirty() && !confirm(ED_DISCARD)) return;
+  if (edDirty()) { if (!confirm(ED_DISCARD)) return; edRevert(); }
   edStop(false);
-  ed.loaded = false;
-  edClearDraft();
   location.hash = "songs";
 }
 
@@ -501,6 +503,9 @@ $("popChord").addEventListener("keydown", e => {
 $("popInsBefore").addEventListener("click", () => edInsert(false));
 $("popInsAfter").addEventListener("click", () => edInsert(true));
 $("popDel").addEventListener("click", edDelete);
+$("popPlay").addEventListener("click", () => {
+  if (ed.sel) previewStep(ed.song, ed.sel.i, Math.max(30, Math.min(240, +$("edBpm").value || 80)) * transport.rate);
+});
 $("popClose").addEventListener("click", () => { ed.popOpen = false; edShowPop(); });
 
 $("edTab").addEventListener("click", e => {

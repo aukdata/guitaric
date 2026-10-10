@@ -133,7 +133,7 @@ svg.tab { display: block; padding: 0; border-radius: 0; } /* not the mode-tab bu
 .tab-beam, .tab-dot { fill: var(--fg); }
 .tab-flag { fill: none; stroke: var(--fg); stroke-width: 1.6; }
 .tab-rest { font: 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
-.tab-step[data-playing] .tab-hl, .tab-step[data-playing] .tab-bg { fill: var(--accent-soft); }
+.tab-step[data-playing] .tab-hl { fill: none; stroke: var(--bad); stroke-width: 2; }
 .tab-step[data-state="current"] .tab-hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
 .tab-step[data-state="current"] .tab-bg { fill: var(--accent-soft); }
 .tab-step[data-state="current"] .tab-fret, .tab-step[data-state="current"] .tab-chord { fill: var(--accent); }
@@ -241,7 +241,8 @@ kbd { font-family: var(--f-mono); font-size: .8rem; border: 1px solid var(--line
 .ed-toolbar select { font: inherit; font-size: .88rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 6px; }
 
 /* the highlight behind the current / playing note lets the string lines show through */
-.tab-step[data-state="current"] .tab-hl, .tab-step[data-playing] .tab-hl { fill-opacity: .45; }
+.tab-step[data-state="current"] .tab-hl { fill-opacity: .45; }
+.tab-step[data-playing] .tab-hl { fill: none; stroke: var(--bad); stroke-width: 2; }
 
 /* ===== practice screen (same layout as the editor) ===== */
 .ed-title-text { font-weight: 700; font-size: 1.05rem; max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

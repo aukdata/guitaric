@@ -26,7 +26,7 @@ function loadPracticeSong(s, fromEditor) {
   practice.fromEditor = fromEditor;
   practice.songId = fromEditor ? null : s.id;
   practice.song = buildSong(s);
-  practice.tab = renderTab($("pTab"), practice.song, { onStepClick: i => { if (model.sources.length) stopModel(); gotoStep(i); } });
+  practice.tab = renderTab($("pTab"), practice.song, { onStepClick: practiceStepClick });
   $("prTitle").textContent = (s.title || "無題の曲") + (fromEditor ? "（未保存）" : "");
   setMetroSong(practice.song);
   restartPractice();
@@ -35,6 +35,21 @@ function loadPracticeSong(s, fromEditor) {
 function openPractice(id) {
   loadPractice(id);
   location.hash = "practice";
+}
+
+// a tap moves there; a second tap on the same note plays just that note
+let lastStepTap = { i: -1, t: 0 };
+function practiceStepClick(i) {
+  const now = performance.now(), again = lastStepTap.i === i && now - lastStepTap.t < 400;
+  lastStepTap = { i, t: now };
+  if (again) {
+    // the speaker's note must not be judged as played
+    const end = previewStep(practice.song, i, effectiveBpm());
+    if (end) { practice.mutedUntil = Math.max(practice.mutedUntil, end); practice.tracker.reset(); }
+    return;
+  }
+  if (model.sources.length) stopModel();
+  gotoStep(i);
 }
 
 function markStep(k, state) { practice.marks[k] = state; practice.tab.setState(k, state); }
@@ -128,6 +143,7 @@ function judgeStep(st, res, tr, repeat, ringing) {
   }
   const want = stepMidis(st), wantPcs = want.map(m => m % 12);
   const top = Math.max(0, ...res.notes.map(n => n.salience));
+  if (st.tech === "b") return judgeBend(st, res, top, ringing);
   // strong notes of another pitch class that the previous step doesn't explain
   const extra = [...new Set(res.notes.filter(n => n.salience >= top * JUDGE.extraSal && !wantPcs.includes(n.midi % 12) && !ringing.includes(n.midi % 12)).map(n => noteName(n.midi)))];
   if (want.length === 1) {
@@ -137,6 +153,19 @@ function judgeStep(st, res, tr, repeat, ringing) {
   }
   const missing = want.filter(m => ch[m % 12] < JUDGE.present);
   return { ok: missing.length === 0 && !extra.length, missing: missing.map(noteName), extra };
+}
+
+// A bend passes once the pitch has risen most of the way: within 60 cents below the target (a slightly
+// short bend is the usual miss) to 50 above. The fretted pitch and the pitches on the way up are the
+// same string bending, not wrong notes.
+function judgeBend(st, res, top, ringing) {
+  const from = OPEN_MIDI[st.notes[0][0]] + st.notes[0][1], aim = st.bend * 100;
+  const cents = n => 1200 * Math.log2(n.freq / midiToFreq(from));
+  const loud = res.notes.filter(n => n.salience >= top * 0.6);
+  const hit = loud.some(n => cents(n) >= aim - 60 && cents(n) <= aim + 50);
+  const extra = [...new Set(res.notes.filter(n => n.salience >= top * JUDGE.extraSal && !(cents(n) > -50 && cents(n) < aim + 60) &&
+    !ringing.includes(n.midi % 12)).map(n => noteName(n.midi)))];
+  return { ok: hit && !extra.length, missing: hit ? [] : [noteName(from + st.bend)], extra };
 }
 
 function showWrong(st, res, tr, j) {
@@ -158,7 +187,8 @@ function passStep() {
 }
 
 function practiceTick(buf) {
-  const res = detectNotes(buf, ctx.sampleRate);
+  const cur = practice.song.steps[practice.idx];
+  const res = detectNotes(buf, ctx.sampleRate, { anyPitch: !!cur && cur.tech === "b" });
   const db = 20 * Math.log10(res.rms + 1e-9);
   $("pMeter").style.width = Math.max(0, Math.min(100, (db + 70) / 60 * 100)) + "%";
   // strums found by the short-window onset detector since the last frame

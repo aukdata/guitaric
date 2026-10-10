@@ -15,9 +15,16 @@ function scheduleSong(song, from, bpm, out, onStep) {
     let held = dur, k = i + 1;
     while (steps[k] && steps[k].tie) held += steps[k++].len * cell;
     const ring = k >= steps.length ? held + 1.6 : held + 0.05;
-    const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + 0.05, i + 1);
+    const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + (st.tech === "s" ? 0.3 : 0.05), i + 1);
     const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
     const src = ctx.createBufferSource(); src.buffer = b;
+    // a slide glides from the previous note on the same string up or down into this one
+    const prev = steps[i - 1];
+    if (st.tech === "s" && prev && prev.notes.length === 1 && prev.notes[0][0] === st.notes[0][0] && prev.notes[0][1] !== st.notes[0][1]) {
+      const glide = Math.min(0.15, dur * 0.5);
+      src.playbackRate.setValueAtTime(2 ** ((prev.notes[0][1] - st.notes[0][1]) / 12), start);
+      src.playbackRate.exponentialRampToValueAtTime(1, start + glide);
+    }
     // bends glide up into the bent pitch; a release starts bent and comes down
     if (st.tech === "b") {
       src.playbackRate.setValueAtTime(2 ** (-st.bend / 12), start);
@@ -36,6 +43,19 @@ function scheduleSong(song, from, bpm, out, onStep) {
     sources.push(src);
   }
   return { sources, timers, start, end: t };
+}
+
+// one step on its own (the editor window's ▶, a double tap in practice); a new one cuts the last off
+let preview = null;
+function previewStep(song, i, bpm) {
+  const st = song.steps[i];
+  if (!st || !st.notes.length) return;
+  ensureContext();
+  if (preview) { preview.sources.forEach(src => { try { src.stop(); } catch (e) {} }); preview.gain.disconnect(); }
+  const gain = ctx.createGain(); gain.gain.value = transportGain(); gain.connect(ctx.destination);
+  const r = scheduleSong({ ...song, steps: [st] }, 0, bpm, gain, () => {});
+  preview = { sources: r.sources, gain };
+  return r.end + 1.6; // when it has rung out
 }
 
 /* ----- playback settings shared by the practice and editor screens ----- */

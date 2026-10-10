@@ -88,7 +88,8 @@ function detectNotes(frame, sr, opts = {}) {
       freq = (k + p) * df;
     }
     // keep only notes whose measured pitch lands within 40 cents of the semitone (drops noise peaks)
-    if (Math.abs(1200 * Math.log2(freq / midiToFreq(best.m))) < 40) notes.push({ midi: best.m, freq, salience: best.sal });
+    // (opts.anyPitch keeps them all: a bend passes between semitones)
+    if (opts.anyPitch || Math.abs(1200 * Math.log2(freq / midiToFreq(best.m))) < 40) notes.push({ midi: best.m, freq, salience: best.sal });
     const f0 = midiToFreq(best.m);
     for (let h = 1; h * f0 < MP.fmax + 500; h++) {
       const c = h * f0 / df; if (c >= mag.length - 2) break;
