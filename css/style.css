@@ -145,7 +145,6 @@ svg.tab { display: block; }
 .song-title small { margin-left: 8px; color: var(--muted); font-weight: 400; font-size: .78rem; }
 .song-row button { padding: 6px 12px; font-size: .88rem; }
 button.danger { color: var(--bad); }
-.editor { display: grid; gap: 12px; }
 .editor-head { display: flex; justify-content: space-between; align-items: center; }
 .editor-head h2 { margin: 0; }
 .field-row { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -156,8 +155,6 @@ button.danger { color: var(--bad); }
 .editor input { font-size: 16px; }
 .bpm input { width: 6em; }
 .errors { margin: 0; color: var(--bad); font-size: .85rem; min-height: 1.2em; }
-.examples { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); }
-.examples button { font-family: var(--f-mono); font-size: .8rem; padding: 4px 10px; }
 .howto { font-size: .88rem; }
 .howto summary { cursor: pointer; color: var(--accent); }
 .howto ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
@@ -175,36 +172,62 @@ label.inline select { padding: 7px 8px; }
 .dots i:first-child { box-shadow: inset 0 0 0 2px var(--accent); }
 .dots i.on { background: var(--accent); }
 
-/* click-to-edit on the TAB (曲を作る) */
-#eTab .tab-step { cursor: crosshair; }
-.tab-cursor { fill: none; stroke: var(--accent); stroke-width: 2; }
-.vedit { position: sticky; bottom: 0; z-index: 5; display: grid; gap: 8px; background: var(--surface); border-top: 1px solid var(--line); padding: 10px 0 6px; }
-@media (max-width: 720px) { .vedit { bottom: calc(60px + env(safe-area-inset-bottom)); } }
-.vedit:not([data-active="1"]) > :not(.vwhere) { display: none; }
-.vwhere { margin: 0; font-size: .9rem; color: var(--muted); min-height: 1.4em; }
-.vpad { display: flex; flex-wrap: wrap; gap: 4px; }
-.vpad button { min-width: 40px; padding: 7px 0; justify-content: center; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
-.vpad button.clear { padding: 7px 10px; }
-.vpad button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
-.vrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.vrow button { padding: 7px 11px; }
-.editor .vrow select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
-.editor .vrow input[type="checkbox"] { width: auto; }
-.vchord { display: inline-flex; gap: 6px; }
-.editor .vchord input { width: 7.5em; padding: 6px 8px; }
-.vkeys { margin: 0; font-size: .78rem; color: var(--muted); }
-@media (hover: none) { .vkeys { display: none; } }
-#vStart { justify-self: start; }
-#vStart[hidden] { display: none; }
-@media (max-width: 720px) {
-  .vedit { gap: 6px; padding-top: 8px; }
-  .vpad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; }
-  .vpad button, .vpad button.clear { min-width: 0; padding: 6px 0; font-size: .9rem; }
-  .vpad button.clear { grid-column: span 2; }
-  .vrow { gap: 4px 6px; }
-  .vrow button { padding: 5px 8px; font-size: .85rem; }
-  .vrow label.inline { font-size: .8rem; }
-  .editor .vrow select { padding: 4px 4px; font-size: .85rem; }
-  .editor .vchord input { width: 6em; padding: 4px 6px; }
-}
 .file-row { margin-bottom: 8px; }
+.editor-head { margin-bottom: 12px; }
+
+/* ===== full-screen TAB editor (DTM style) ===== */
+body.editing .appbar { display: none; }
+body.editing .wrap { max-width: none; padding-top: 0; padding-bottom: 48px; }
+.ed { gap: 10px; }
+.ed-toolbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  margin: 0 -16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.ed-group { display: flex; align-items: center; gap: 6px; }
+.ed-toolbar button { padding: 6px 11px; font-size: .9rem; }
+.ed-toolbar button.icon { min-width: 36px; justify-content: center; padding: 6px 8px; font-size: 1rem; }
+.ed-toolbar button.play { min-width: 46px; }
+.ed-toolbar button.play.on { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.ed-title { font: inherit; font-weight: 700; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; width: 14em; min-width: 0; }
+#edSave[data-dirty="1"]::after { content: "●"; font-size: .6rem; margin-left: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.ed-toolbar .seg button, .seg button { border: 0; border-radius: 0; border-left: 1px solid var(--line); background: var(--surface); padding: 6px 10px; font-size: .82rem; }
+.seg button:first-child { border-left: 0; }
+.seg button[aria-checked="true"], .seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+.seg.small button { padding: 4px 9px; font-size: .82rem; min-width: 32px; justify-content: center; }
+.ed-status { margin: 0; font-size: .9rem; color: var(--muted); min-height: 1.5em; }
+.ed-status.bad { color: var(--bad); }
+.ed-body { position: relative; min-height: 60vh; padding-bottom: 320px; }
+#edTab .tab-step { cursor: crosshair; }
+.tab-cursor { fill: none; stroke: var(--accent); stroke-width: 2; }
+.ed-pop { position: absolute; z-index: 15; width: min(440px, 100%); display: grid; gap: 8px; padding: 10px 12px 12px;
+  background: var(--surface); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.ed-pop[hidden] { display: none; }
+.pop-head { display: flex; justify-content: space-between; align-items: center; font-size: .85rem; color: var(--muted); }
+.pop-head button { border: 0; padding: 2px 8px; font-size: 1.1rem; }
+.pop-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.pop-label { font-size: .8rem; color: var(--muted); min-width: 2.6em; }
+.pop-row select, .pop-row input[type="text"] { font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.pop-row input[type="text"] { width: 7em; }
+.pop-row button { padding: 5px 10px; font-size: .88rem; }
+.pop-row.actions { padding-top: 4px; border-top: 1px solid var(--line); }
+.pad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; }
+.pad button { min-width: 0; padding: 6px 0; justify-content: center; font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: .92rem; }
+.pad button.clear { grid-column: span 2; font-family: inherit; font-size: .82rem; }
+.pad button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.ed-dlg { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--fg); padding: 18px; width: min(640px, calc(100vw - 32px)); }
+.ed-dlg::backdrop { background: rgba(0, 0, 0, .35); }
+.ed-dlg h2 { margin: 0 0 8px; }
+.ed-dlg textarea { width: 100%; font-family: var(--f-mono); font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.keys { border-collapse: collapse; font-size: .9rem; }
+.keys td { padding: 5px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.keys td:first-child { white-space: nowrap; }
+kbd { font-family: var(--f-mono); font-size: .8rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--bg); }
+@media (max-width: 720px) {
+  body.editing .wrap { padding-bottom: 24px; }
+  body.editing .tabs { display: none; }
+  .ed-toolbar { flex-wrap: nowrap; overflow-x: auto; gap: 14px; scrollbar-width: thin; }
+  .ed-group { flex: none; }
+  .ed-title { width: 9em; }
+  .ed-pop { width: calc(100% - 0px); }
+}
+@media (hover: none) { #edKeys { display: none; } }

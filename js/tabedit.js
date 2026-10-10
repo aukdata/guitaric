@@ -1,6 +1,6 @@
-/* ===== click-to-edit on the TAB (曲を作る): edits go back into the song text ===== */
-// The text stays the one source of truth: each edit changes the parsed steps, writes them back
-// as text, and the preview is drawn again from that text.
+/* ===== TAB editor (full screen, DTM style): click a note, edit it in the window below it ===== */
+// The song text stays the source of truth: each edit changes the parsed steps and writes them back
+// as text (stepsToText), and the TAB is drawn again from that text.
 
 // one step as a text token ("6-3h?:2", "C", "r:2", "~:8")
 function stepToken(st, withLen) {
@@ -42,43 +42,6 @@ function stepsToText(steps, grid, timeSig, prefix) {
   return (prefix || "") + "| " + out.join(" | ") + " |";
 }
 
-const vedit = { sel: null, undo: [], digit: "", digitAt: 0 };
-
-function veditSong() { return buildSong({ text: $("eText").value, grid: editingGrid }); }
-
-// apply a change to a copy of the steps and write the result back into the text box
-function veditChange(fn) {
-  const song = veditSong();
-  if (song.errors.length) return;
-  const steps = song.steps.map(st => ({ ...st, notes: st.notes.map(n => n.slice()) }));
-  const sel = fn(steps, song);
-  if (sel === false) return;
-  const prefix = (/^\s*@(4|8|16)\b\s*/.exec($("eText").value) || [""])[0];
-  vedit.undo.push($("eText").value);
-  if (vedit.undo.length > 100) vedit.undo.shift();
-  $("eText").value = steps.length ? stepsToText(steps, song.grid, song.timeSig, prefix) : prefix.trim();
-  if (sel) vedit.sel = sel;
-  previewEditor();
-}
-
-function veditUndo() {
-  if (!vedit.undo.length) return;
-  $("eText").value = vedit.undo.pop();
-  previewEditor();
-}
-
-const asNotes = st => { delete st.chord; delete st.tie; };
-function setFret(steps, i, s, f) {
-  const st = steps[i];
-  asNotes(st);
-  st.notes = st.notes.filter(n => n[0] !== s);
-  if (f != null) st.notes.push([s, f]);
-  st.notes.sort((a, b) => b[0] - a[0]);
-  if (st.notes.length !== 1) { delete st.tech; delete st.bend; }
-  if (!st.notes.length) delete st.loose;
-}
-const restLike = len => ({ notes: [], len });
-
 function lenChoices(grid, cur) {
   const list = [[grid / 16, "16分"], [grid / 8, "8分"], [grid * 3 / 16, "付点8分"], [grid / 4, "4分"], [grid * 3 / 8, "付点4分"],
     [grid / 2, "2分"], [grid * 3 / 4, "付点2分"], [grid, "全"]].filter(([n]) => Number.isInteger(n) && n >= 1);
@@ -88,183 +51,482 @@ function lenChoices(grid, cur) {
   return out.sort((a, b) => a[0] - b[0]);
 }
 
-// called after every preview: redraw the selection and fill in the panel
-function refreshVisualEdit(song, tab) {
-  const panel = $("vEdit");
-  const ok = !song.errors.length;
-  $("vStart").hidden = !ok || song.steps.length > 0;
-  if (!ok) { vedit.sel = null; $("vWhere").textContent = "テキストの間違いを直すと、TAB譜をクリックして編集できます"; }
-  if (vedit.sel && vedit.sel.i >= song.steps.length) vedit.sel = song.steps.length ? { i: song.steps.length - 1, s: vedit.sel.s } : null;
-  panel.dataset.active = vedit.sel ? "1" : "";
-  panel.querySelectorAll("button, select, input").forEach(el => { if (el.id !== "vUndo" && el.id !== "vAddBar") el.disabled = !vedit.sel; });
-  $("vUndo").disabled = !vedit.undo.length;
-  if (!vedit.sel) {
-    if (ok) $("vWhere").textContent = song.steps.length ? "TAB譜の線をクリック（タップ）すると、その場所を編集できます" : "";
+const ED_DRAFT = "guitaric.draft";
+const NEW_SONG_TEXT = "| r:2 r:2 r:2 r:2 |";
+const ed = {
+  loaded: false, id: null, grid: 8, text: "", saved: "",
+  song: null, tab: null, sel: null, popOpen: false,
+  undo: [], redo: [], digit: "", digitAt: 0, clip: null, play: null,
+  stopMode: (() => { try { return localStorage.getItem("guitaric.edStop") || "return"; } catch (e) { return "return"; } })()
+};
+
+const edSnapshot = () => JSON.stringify([$("edTitle").value.trim(), +$("edBpm").value || 80, ed.text]);
+const edDirty = () => ed.loaded && edSnapshot() !== ed.saved;
+const cloneStep = st => ({ ...st, notes: st.notes.map(n => n.slice()) });
+
+function edSaveDraft() {
+  try {
+    localStorage.setItem(ED_DRAFT, JSON.stringify({ id: ed.id, grid: ed.grid, title: $("edTitle").value, bpm: +$("edBpm").value || 80, text: ed.text, saved: ed.saved }));
+  } catch (e) {}
+}
+function edClearDraft() { try { localStorage.removeItem(ED_DRAFT); } catch (e) {} }
+
+// Opens a song (null = new song) in the editor and switches to it.
+function openEditor(s) {
+  if (edDirty() && !confirm("保存していない変更があります。破棄して別の曲を開きますか？")) return;
+  edLoad(s ? { id: s.id, grid: s.grid || 8, title: s.title, bpm: s.bpm || 80, text: s.text } : null);
+  location.hash = "edit";
+}
+
+function edLoad(d, saved) {
+  edStop(false);
+  ed.loaded = true;
+  ed.id = d ? d.id : null;
+  ed.grid = (d && d.grid) || 8;
+  ed.text = d ? d.text : NEW_SONG_TEXT;
+  $("edTitle").value = d ? d.title : "";
+  $("edBpm").value = d ? d.bpm : 80;
+  ed.undo = []; ed.redo = [];
+  ed.saved = saved || (d && d.id ? edSnapshot() : "");
+  ed.sel = { i: 0, s: 1 }; ed.popOpen = false;
+  edRender();
+  edSaveDraft();
+}
+
+// called when the editor view is shown: keep what is open, or bring back the draft from last time
+function edEnsureOpen() {
+  if (ed.loaded) { edRender(); return; }
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(ED_DRAFT) || "null"); } catch (e) {}
+  edLoad(d, d && d.saved);
+}
+
+function edRender() {
+  ed.song = buildSong({ text: ed.text, grid: ed.grid });
+  const song = ed.song, n = song.steps.length;
+  if (ed.sel && ed.sel.i >= n) ed.sel = n ? { i: n - 1, s: ed.sel.s } : null;
+  if (!ed.sel && n) ed.sel = { i: 0, s: 1 };
+  ed.tab = n ? renderTab($("edTab"), song) : null;
+  if (!n) $("edTab").innerHTML = '<p class="empty">まだ何もありません。ツールバーの「＋小節」か「テキスト入力」で始めてください。</p>';
+  if (ed.sel && ed.tab) ed.tab.setState(ed.sel.i, "current");
+  if (ed.play && ed.tab) ed.tab.setPlaying(ed.play.cur);
+  edDrawCursor();
+  edStatus();
+  edShowPop();
+  $("edUndo").disabled = !ed.undo.length;
+  $("edRedo").disabled = !ed.redo.length;
+  $("edSave").disabled = !n;
+  $("edSave").dataset.dirty = edDirty() ? "1" : "";
+}
+
+function edWhere(i) {
+  const song = ed.song, barCells = song.timeSig[0] * song.grid / 4, beat = song.grid / 4;
+  const cell = song.steps.slice(0, i).reduce((a, x) => a + x.len, 0);
+  const b = (cell % barCells) / beat + 1;
+  return `${Math.floor(cell / barCells) + 1}小節目 ${Number.isInteger(b) ? b : b.toFixed(1)}拍目`;
+}
+
+function edStatus(msg) {
+  const el = $("edStatus");
+  el.classList.toggle("bad", !!ed.song.errors.length);
+  if (ed.song.errors.length) {
+    el.textContent = "テキストに読めない所があります（ツールバーの「テキスト入力」で直してください）：" + ed.song.errors.join(" / ");
     return;
   }
-  const { i, s } = vedit.sel, st = song.steps[i];
-  tab.setState(i, "current");
-  drawCursor();
-  // where: bar and beat
-  const barCells = song.timeSig[0] * song.grid / 4, beat = song.grid / 4;
-  const cell = song.steps.slice(0, i).reduce((a, x) => a + x.len, 0);
-  const bar = Math.floor(cell / barCells) + 1, b = (cell % barCells) / beat + 1;
-  const what = st.tie ? "タイ" : stepLabel(st);
-  $("vWhere").textContent = `${bar}小節目 ${Number.isInteger(b) ? b : b.toFixed(1)}拍目・${s}弦 ― ${what}`;
-  $("vLen").innerHTML = lenChoices(song.grid, st.len).map(([n, l]) => `<option value="${n}">${l}</option>`).join("");
-  $("vLen").value = st.len;
-  const single = !st.chord && st.notes.length === 1;
-  $("vTech").disabled = !single;
-  $("vTech").value = single && st.tech ? st.tech + (st.tech === "b" ? st.bend : "") : "";
-  $("vLoose").checked = !!st.loose;
-  $("vLoose").disabled = !st.notes.length;
-  if (document.activeElement !== $("vChord")) $("vChord").value = st.chord || "";
-  const fret = (st.notes.find(n => n[0] === s) || [])[1];
-  $("vPad").querySelectorAll("button").forEach(btn => btn.setAttribute("aria-pressed", fret != null && btn.dataset.fret === String(fret) ? "true" : "false"));
+  if (msg) { el.textContent = msg; return; }
+  if (!ed.sel) { el.textContent = ""; return; }
+  const st = ed.song.steps[ed.sel.i];
+  const len = (lenChoices(ed.song.grid, st.len).find(([n]) => n === st.len) || [0, ""])[1];
+  el.textContent = `${edWhere(ed.sel.i)}・${ed.sel.s}弦 ― ${st.tie ? "タイ" : stepLabel(st)}（${len}）`;
 }
 
 // a box around the selected string of the selected step
-function drawCursor() {
-  const old = $("eTab").querySelector(".tab-cursor");
+function edDrawCursor() {
+  const old = $("edTab").querySelector(".tab-cursor");
   if (old) old.remove();
-  if (!vedit.sel) return;
-  const g = $("eTab").querySelector(`.tab-step[data-i="${vedit.sel.i}"]`);
+  if (!ed.sel) return;
+  const g = $("edTab").querySelector(`.tab-step[data-i="${ed.sel.i}"]`);
   if (!g) return;
   const hl = g.querySelector(".tab-hl");
   const x = +hl.getAttribute("x") - 2, w = +hl.getAttribute("width") + 4;
-  const cx = x + Math.min(w, TAB.minStep) / 2, y = TAB.top + (vedit.sel.s - 1) * TAB.row;
+  const cx = x + Math.min(w, TAB.minStep) / 2, y = TAB.top + (ed.sel.s - 1) * TAB.row;
   const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   for (const [k, v] of Object.entries({ x: cx - 13, y: y - 10, width: 26, height: 20, rx: 4, class: "tab-cursor" })) r.setAttribute(k, v);
   hl.after(r);
 }
 
-function veditSelect(i, s) {
-  vedit.sel = { i, s };
-  vedit.digit = "";
-  previewEditor();
+/* ----- the edit window under the selected note ----- */
+function edShowPop() {
+  const pop = $("edPop");
+  const g = ed.sel && $("edTab").querySelector(`.tab-step[data-i="${ed.sel.i}"]`);
+  if (!ed.popOpen || !g || ed.play || ed.song.errors.length) { pop.hidden = true; return; }
+  const st = ed.song.steps[ed.sel.i], s = ed.sel.s;
+  $("popWhere").textContent = `${edWhere(ed.sel.i)}・${s}弦`;
+  $("popStrings").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.s === s)));
+  const fret = (st.notes.find(n => n[0] === s) || [])[1];
+  $("popPad").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(fret != null && b.dataset.fret === String(fret))));
+  $("popLen").innerHTML = lenChoices(ed.song.grid, st.len).map(([n, l]) => `<option value="${n}">${l}</option>`).join("");
+  $("popLen").value = st.len;
+  $("popLoose").checked = !!st.loose;
+  $("popLoose").disabled = !st.notes.length;
+  const single = !st.chord && st.notes.length === 1, tech = st.tech ? st.tech + (st.tech === "b" ? st.bend : "") : "";
+  $("popTech").querySelectorAll("button").forEach(b => { b.disabled = !single; b.setAttribute("aria-pressed", String(single && b.dataset.tech === tech)); });
+  if (document.activeElement !== $("popChord")) $("popChord").value = st.chord || "";
+  pop.hidden = false;
+  // just below the note, kept inside the editor's width
+  const body = $("edBody").getBoundingClientRect(), hl = g.querySelector(".tab-hl").getBoundingClientRect();
+  const left = Math.max(0, Math.min(hl.left - body.left - 8, body.width - pop.offsetWidth));
+  pop.style.left = left + "px";
+  pop.style.top = (hl.bottom - body.top + 4) + "px";
+  const r = pop.getBoundingClientRect();
+  if (r.bottom > innerHeight) window.scrollBy(0, Math.min(r.bottom - innerHeight + 8, r.top - 120));
 }
 
-function veditSetFret(f) {
-  if (!vedit.sel) return;
-  const { i, s } = vedit.sel;
-  veditChange(steps => { setFret(steps, i, s, f); });
+function edSelect(i, s, open) {
+  ed.sel = { i, s };
+  ed.digit = "";
+  if (open != null) ed.popOpen = open;
+  edRender();
+  if (ed.tab) ed.tab.scrollTo(i);
 }
 
-function veditInsert(after) {
-  if (!vedit.sel) return;
-  const { i, s } = vedit.sel;
-  veditChange(steps => { steps.splice(after ? i + 1 : i, 0, restLike(steps[i].len)); return { i: after ? i + 1 : i, s }; });
+/* ----- edits ----- */
+// apply a change to a copy of the steps and write the result back as text
+function edChange(fn) {
+  if (ed.song.errors.length) return;
+  const steps = ed.song.steps.map(cloneStep);
+  const sel = fn(steps, ed.song);
+  if (sel === false) return;
+  const prefix = (/^\s*@(4|8|16)\b\s*/.exec(ed.text) || [""])[0];
+  edSetText(steps.length ? stepsToText(steps, ed.song.grid, ed.song.timeSig, prefix) : prefix.trim(), sel);
 }
 
-function veditDelete() {
-  if (!vedit.sel) return;
-  const { i, s } = vedit.sel;
-  veditChange(steps => { steps.splice(i, 1); return steps.length ? { i: Math.min(i, steps.length - 1), s } : null; });
-  if (!veditSong().steps.length) vedit.sel = null;
+function edSetText(text, sel) {
+  if (text === ed.text) return;
+  ed.undo.push({ text: ed.text, sel: ed.sel });
+  if (ed.undo.length > 200) ed.undo.shift();
+  ed.redo = [];
+  ed.text = text;
+  if (sel) ed.sel = sel;
+  edRender();
+  edSaveDraft();
 }
 
-// a new bar of quarter rests to fill in
-function veditAddBar() {
-  veditChange((steps, song) => {
-    const q = Math.max(1, song.grid / 4), barCells = song.timeSig[0] * song.grid / 4;
-    // finish a part-filled last bar first, so the new bar starts on the bar line
-    let left = (barCells - steps.reduce((a, st) => a + st.len, 0) % barCells) % barCells;
-    while (left > 0) { const n = left % q || q; steps.push(restLike(n)); left -= n; }
-    const first = steps.length;
-    for (let k = 0; k < song.timeSig[0]; k++) steps.push(restLike(q));
-    return { i: first, s: vedit.sel ? vedit.sel.s : 1 };
+function edUndo(redo) {
+  const from = redo ? ed.redo : ed.undo, to = redo ? ed.undo : ed.redo;
+  if (!from.length) return;
+  const u = from.pop();
+  to.push({ text: ed.text, sel: ed.sel });
+  ed.text = u.text; ed.sel = u.sel;
+  edRender();
+  edSaveDraft();
+}
+
+const asNotes = st => { delete st.chord; delete st.tie; };
+function setFret(st, s, f) {
+  asNotes(st);
+  st.notes = st.notes.filter(n => n[0] !== s);
+  if (f != null) st.notes.push([s, f]);
+  st.notes.sort((a, b) => b[0] - a[0]);
+  if (st.notes.length !== 1) { delete st.tech; delete st.bend; }
+  if (!st.notes.length) delete st.loose;
+}
+const restStep = len => ({ notes: [], len });
+
+function edFret(f) {
+  if (!ed.sel) return;
+  const { i, s } = ed.sel;
+  edChange(steps => { setFret(steps[i], s, f); });
+}
+
+// "h" "p" "s" "b2" "b1" "d" or "" (none); the same one again turns it off
+function edTech(v, toggle) {
+  if (!ed.sel) return;
+  const st = ed.song.steps[ed.sel.i];
+  if (st.chord || st.notes.length !== 1) { edStatus("奏法は単音にだけ付けられます"); return; }
+  const cur = st.tech ? st.tech + (st.tech === "b" ? st.bend : "") : "";
+  if (toggle && cur === v) v = "";
+  const { i } = ed.sel;
+  edChange(steps => {
+    delete steps[i].tech; delete steps[i].bend;
+    if (v) { steps[i].tech = v[0]; if (v[0] === "b") steps[i].bend = +v[1]; }
   });
 }
 
-function veditMove(di, ds) {
-  if (!vedit.sel) return;
-  const n = veditSong().steps.length;
-  veditSelect(Math.max(0, Math.min(n - 1, vedit.sel.i + di)), Math.max(1, Math.min(6, vedit.sel.s + ds)));
+function edLen(len) {
+  if (!ed.sel) return;
+  const { i } = ed.sel;
+  edChange(steps => { steps[i].len = len; });
+}
+function edLenStep(dir) {
+  if (!ed.sel) return;
+  const st = ed.song.steps[ed.sel.i], list = lenChoices(ed.song.grid, st.len).map(([n]) => n);
+  const k = list.indexOf(st.len) + dir;
+  if (k >= 0 && k < list.length) edLen(list[k]);
 }
 
-// clicks on the TAB: the step under the pointer, and the nearest string line
-$("eTab").addEventListener("click", e => {
-  const g = e.target.closest(".tab-step"), svg = e.target.closest("svg");
-  if (!g || !svg || veditSong().errors.length) return;
-  const m = svg.getScreenCTM();
-  const y = m ? new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()).y : e.offsetY;
-  const s = Math.max(1, Math.min(6, Math.round((y - TAB.top) / TAB.row) + 1));
-  veditSelect(+g.dataset.i, s);
-});
+function edLoose(on) {
+  if (!ed.sel || !ed.song.steps[ed.sel.i].notes.length) return;
+  const { i } = ed.sel;
+  edChange(steps => { if (on) steps[i].loose = true; else delete steps[i].loose; });
+}
 
-// the preview re-flows on resize and loses the cursor box; put it back
-new MutationObserver(() => { if (vedit.sel && !$("eTab").querySelector(".tab-cursor")) drawCursor(); })
-  .observe($("eTab"), { childList: true });
+function edInsert(after, step) {
+  if (!ed.sel) return;
+  const { i, s } = ed.sel, at = after ? i + 1 : i;
+  edChange(steps => { steps.splice(at, 0, step ? cloneStep(step) : restStep(steps[i].len)); return { i: at, s }; });
+}
 
+function edDelete() {
+  if (!ed.sel) return;
+  const { i, s } = ed.sel;
+  edChange(steps => { steps.splice(i, 1); return steps.length ? { i: Math.min(i, steps.length - 1), s } : null; });
+}
+
+function edRest() {
+  if (!ed.sel) return;
+  const { i } = ed.sel;
+  edChange(steps => { steps[i] = restStep(steps[i].len); });
+}
+
+function edChord(name) {
+  if (!ed.sel || !name) return;
+  const notes = chordVoicing(name);
+  if (!notes) { edStatus(`「${name}」はコード名として読めません`); return; }
+  const { i } = ed.sel;
+  edChange(steps => { const st = steps[i]; steps[i] = { notes, chord: name, len: st.len, ...(st.loose ? { loose: true } : {}) }; });
+}
+
+// a new bar of quarter rests at the end (a part-filled last bar is finished first)
+function edAddBar() {
+  if (ed.song.errors.length) return;
+  edChange((steps, song) => {
+    const q = Math.max(1, song.grid / 4), barCells = song.timeSig[0] * song.grid / 4;
+    let left = (barCells - steps.reduce((a, st) => a + st.len, 0) % barCells) % barCells;
+    while (left > 0) { const n = left % q || q; steps.push(restStep(n)); left -= n; }
+    const first = steps.length;
+    for (let k = 0; k < song.timeSig[0]; k++) steps.push(restStep(q));
+    return { i: first, s: ed.sel ? ed.sel.s : 1 };
+  });
+  if (ed.tab && ed.sel) ed.tab.scrollTo(ed.sel.i);
+}
+
+function edMove(di, ds) {
+  if (!ed.sel) return;
+  const n = ed.song.steps.length;
+  edSelect(Math.max(0, Math.min(n - 1, ed.sel.i + di)), Math.max(1, Math.min(6, ed.sel.s + ds)));
+}
+
+/* ----- playback ----- */
+function edVolume() { const v = +$("edVol").value; return v * v; }
+
+function edPlay() {
+  if (ed.play) { edStop(false); return; }
+  if (!ed.song || !ed.song.steps.length) return;
+  ensureContext();
+  if (ctx.state === "suspended") ctx.resume();
+  const from = ed.sel ? ed.sel.i : 0;
+  const gain = ctx.createGain(); gain.gain.value = edVolume(); gain.connect(ctx.destination);
+  const bpm = Math.max(30, Math.min(240, +$("edBpm").value || 80));
+  const r = scheduleSong(ed.song, from, bpm, gain, i => {
+    if (!ed.play) return;
+    ed.play.cur = i;
+    if (ed.tab) { ed.tab.setPlaying(i); ed.tab.scrollTo(i); }
+  });
+  ed.play = { ...r, from, cur: from, gain };
+  ed.play.timers.push(setTimeout(() => edStop(true), (r.end - ctx.currentTime) * 1000));
+  $("edPlay").textContent = "■"; $("edPlay").setAttribute("aria-label", "停止"); $("edPlay").classList.add("on");
+  edRender();
+}
+
+// natural: the song played to its end (its last note is left to ring out)
+function edStop(natural) {
+  const p = ed.play;
+  if (!p) return;
+  ed.play = null;
+  p.timers.forEach(clearTimeout);
+  if (natural) setTimeout(() => p.gain.disconnect(), 2500);
+  else { p.sources.forEach(src => { try { src.stop(); } catch (e) {} }); p.gain.disconnect(); }
+  if (ed.tab) ed.tab.setPlaying(-1);
+  if (ed.sel) ed.sel = { i: ed.stopMode === "return" ? p.from : p.cur, s: ed.sel.s };
+  $("edPlay").textContent = "▶"; $("edPlay").setAttribute("aria-label", "再生"); $("edPlay").classList.remove("on");
+  if (ed.loaded) { edRender(); if (ed.tab && ed.sel) ed.tab.scrollTo(ed.sel.i); }
+}
+
+/* ----- save / leave ----- */
+function edSave() {
+  if (!ed.song.steps.length) return;
+  const list = loadUserSongs();
+  const entry = { id: ed.id || "song-" + Date.now().toString(36), title: $("edTitle").value.trim() || "無題の曲", bpm: +$("edBpm").value || 80, text: ed.text.trim() };
+  if (ed.grid !== 8) entry.grid = ed.grid;
+  const at = list.findIndex(x => x.id === entry.id);
+  if (at >= 0) list[at] = entry; else list.unshift(entry);
+  if (!saveUserSongs(list)) { edStatus("このブラウザでは保存できませんでした"); return; }
+  ed.id = entry.id;
+  ed.saved = edSnapshot();
+  edSaveDraft();
+  edRender();
+  edStatus("保存しました");
+  renderSongList(); fillSongSelect();
+  if (currentSongId() === entry.id) loadPractice(entry.id);
+}
+
+function edBack() {
+  if (edDirty() && !confirm("保存していない変更があります。保存せずに一覧に戻りますか？")) return;
+  edStop(false);
+  ed.loaded = false;
+  edClearDraft();
+  location.hash = "editor";
+}
+
+/* ----- text input (secondary) ----- */
+function edOpenText() {
+  $("edTextArea").value = ed.text;
+  $("edTextErr").textContent = "";
+  $("edTextDlg").showModal();
+}
+function edApplyText() {
+  const text = $("edTextArea").value.trim();
+  const song = buildSong({ text, grid: ed.grid });
+  if (song.errors.length) { $("edTextErr").textContent = song.errors.join(" / "); return; }
+  edSetText(text, { i: 0, s: ed.sel ? ed.sel.s : 1 });
+  $("edTextDlg").close();
+}
+
+/* ----- wiring ----- */
 {
-  const pad = $("vPad");
+  const strings = $("popStrings");
+  for (let s = 1; s <= 6; s++) {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.s = s;
+    b.textContent = s; b.title = `${s}弦（${STRING_LABELS[s - 1]}）・Shift+${s}`;
+    strings.append(b);
+  }
+  strings.addEventListener("click", e => { const b = e.target.closest("button"); if (b && ed.sel) edSelect(ed.sel.i, +b.dataset.s); });
+  const pad = $("popPad");
   for (let f = 0; f <= 15; f++) {
     const b = document.createElement("button"); b.type = "button"; b.dataset.fret = f; b.textContent = f;
     pad.append(b);
   }
-  const x = document.createElement("button"); x.type = "button"; x.dataset.fret = "x"; x.textContent = "消す"; x.className = "clear";
+  const x = document.createElement("button"); x.type = "button"; x.dataset.fret = "x"; x.textContent = "消す"; x.className = "clear"; x.title = "この弦の音を消す（Delete）";
   pad.append(x);
-  pad.addEventListener("click", e => {
-    const b = e.target.closest("button");
-    if (b) veditSetFret(b.dataset.fret === "x" ? null : +b.dataset.fret);
-  });
+  pad.addEventListener("click", e => { const b = e.target.closest("button"); if (b) edFret(b.dataset.fret === "x" ? null : +b.dataset.fret); });
+  $("popTech").addEventListener("click", e => { const b = e.target.closest("button"); if (b) edTech(b.dataset.tech, false); });
 }
-$("vLen").addEventListener("change", e => {
-  const { i } = vedit.sel, len = +e.target.value;
-  veditChange(steps => { steps[i].len = len; });
+$("popLen").addEventListener("change", e => edLen(+e.target.value));
+$("popLoose").addEventListener("change", e => edLoose(e.target.checked));
+$("popChordSet").addEventListener("click", () => { edChord($("popChord").value.trim()); $("popChord").blur(); });
+$("popChord").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); edChord($("popChord").value.trim()); $("popChord").blur(); }
+  else if (e.key === "Escape") { e.preventDefault(); $("popChord").blur(); edShowPop(); }
 });
-$("vTech").addEventListener("change", e => {
-  const { i } = vedit.sel, v = e.target.value;
-  veditChange(steps => {
-    delete steps[i].tech; delete steps[i].bend;
-    if (v) { steps[i].tech = v[0]; if (v[0] === "b") steps[i].bend = +v[1]; }
-  });
-});
-$("vLoose").addEventListener("change", e => {
-  const { i } = vedit.sel, on = e.target.checked;
-  veditChange(steps => { if (on) steps[i].loose = true; else delete steps[i].loose; });
-});
-function applyChord() {
-  if (!vedit.sel) return;
-  const name = $("vChord").value.trim(), { i } = vedit.sel;
-  if (!name) return;
-  const notes = chordVoicing(name);
-  if (!notes) { $("vWhere").textContent = `「${name}」はコード名として読めません`; return; }
-  veditChange(steps => { const st = steps[i]; steps[i] = { notes, chord: name, len: st.len, ...(st.loose ? { loose: true } : {}) }; });
-  $("vChord").blur();
-}
-$("vChordSet").addEventListener("click", applyChord);
-$("vChord").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); applyChord(); } });
-$("vInsBefore").addEventListener("click", () => veditInsert(false));
-$("vInsAfter").addEventListener("click", () => veditInsert(true));
-$("vRest").addEventListener("click", () => { const { i } = vedit.sel; veditChange(steps => { steps[i] = restLike(steps[i].len); }); });
-$("vDel").addEventListener("click", veditDelete);
-$("vAddBar").addEventListener("click", veditAddBar);
-$("vStart").addEventListener("click", veditAddBar);
-$("vUndo").addEventListener("click", veditUndo);
-$("eText").addEventListener("input", () => { vedit.undo.length = 0; });
+$("popInsBefore").addEventListener("click", () => edInsert(false));
+$("popInsAfter").addEventListener("click", () => edInsert(true));
+$("popRest").addEventListener("click", edRest);
+$("popDel").addEventListener("click", edDelete);
+$("popClose").addEventListener("click", () => { ed.popOpen = false; edShowPop(); });
 
-// keyboard (PC): digits = fret, arrows move, Delete clears, Enter adds a step after, Ctrl+Z undoes
+$("edTab").addEventListener("click", e => {
+  const g = e.target.closest(".tab-step"), svg = e.target.closest("svg");
+  if (!g || !svg || ed.song.errors.length) return;
+  const m = svg.getScreenCTM();
+  const y = m ? new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()).y : e.offsetY;
+  const s = Math.max(1, Math.min(6, Math.round((y - TAB.top) / TAB.row) + 1));
+  if (ed.play) edStop(false);
+  edSelect(+g.dataset.i, s, true);
+});
+// a click on empty space closes the edit window
+$("edBody").addEventListener("click", e => {
+  if (ed.popOpen && !e.target.closest(".tab-step, .ed-pop")) { ed.popOpen = false; edShowPop(); }
+});
+// the TAB re-flows on resize: put the cursor and the window back
+new MutationObserver(() => { if (ed.sel && !$("edTab").querySelector(".tab-cursor")) { edDrawCursor(); edShowPop(); } })
+  .observe($("edTab"), { childList: true });
+
+$("edBack").addEventListener("click", edBack);
+$("edSave").addEventListener("click", edSave);
+$("edTitle").addEventListener("input", () => { $("edSave").dataset.dirty = edDirty() ? "1" : ""; edSaveDraft(); });
+$("edBpm").addEventListener("input", () => { $("edSave").dataset.dirty = edDirty() ? "1" : ""; edSaveDraft(); });
+$("edPlay").addEventListener("click", edPlay);
+$("edHome").addEventListener("click", () => { if (ed.play) edStop(false); if (ed.song.steps.length) edSelect(0, ed.sel ? ed.sel.s : 1); });
+$("edVol").addEventListener("input", () => {
+  if (ed.play) ed.play.gain.gain.value = edVolume();
+  try { localStorage.setItem("guitaric.edVol", $("edVol").value); } catch (e) {}
+});
+try { const v = localStorage.getItem("guitaric.edVol"); if (v != null) $("edVol").value = v; } catch (e) {}
+function edShowStopMode() {
+  document.querySelectorAll("[data-stop]").forEach(b => b.setAttribute("aria-checked", String(b.dataset.stop === ed.stopMode)));
+}
+document.querySelectorAll("[data-stop]").forEach(b => b.addEventListener("click", () => {
+  ed.stopMode = b.dataset.stop;
+  try { localStorage.setItem("guitaric.edStop", ed.stopMode); } catch (e) {}
+  edShowStopMode();
+}));
+edShowStopMode();
+$("edUndo").addEventListener("click", () => edUndo(false));
+$("edRedo").addEventListener("click", () => edUndo(true));
+$("edAddBar").addEventListener("click", edAddBar);
+$("edText").addEventListener("click", edOpenText);
+$("edTextApply").addEventListener("click", edApplyText);
+$("edTextArea").addEventListener("input", () => {
+  const song = buildSong({ text: $("edTextArea").value, grid: ed.grid });
+  $("edTextErr").textContent = song.errors.join(" / ");
+});
+$("edKeys").addEventListener("click", () => $("edKeysDlg").showModal());
+window.addEventListener("beforeunload", e => { if (edDirty()) { edSaveDraft(); } });
+
+// keyboard (PC), DTM style
 document.addEventListener("keydown", e => {
-  if ($("view-editor").hidden || e.target.closest("input, textarea, select")) return;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { if (vedit.undo.length) { e.preventDefault(); veditUndo(); } return; }
-  if (!vedit.sel || e.ctrlKey || e.metaKey || e.altKey) return;
-  const k = e.key;
-  if (/^\d$/.test(k)) {
+  if ($("view-edit").hidden || document.querySelector("dialog[open]")) return;
+  if (e.target.closest("input, textarea, select")) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); edSave(); }
+    return;
+  }
+  const k = e.key, key = k.toLowerCase(), code = e.code;
+  const done = () => e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    if (key === "z") { done(); edUndo(e.shiftKey); }
+    else if (key === "y") { done(); edUndo(true); }
+    else if (key === "s") { done(); edSave(); }
+    else if (ed.sel && key === "c") { done(); ed.clip = cloneStep(ed.song.steps[ed.sel.i]); edStatus("コピーしました"); }
+    else if (ed.sel && key === "x") { done(); ed.clip = cloneStep(ed.song.steps[ed.sel.i]); edDelete(); }
+    else if (ed.sel && key === "v" && ed.clip) { done(); edInsert(true, ed.clip); }
+    else if (ed.sel && key === "d") { done(); edInsert(true, ed.song.steps[ed.sel.i]); }
+    return;
+  }
+  if (e.altKey) return;
+  if (k === " ") { done(); edPlay(); return; }
+  if (k === "?") { done(); $("edKeysDlg").showModal(); return; }
+  if (k === "Escape") { if (ed.popOpen) { done(); ed.popOpen = false; edShowPop(); } return; }
+  if (k === "Home") { done(); $("edHome").click(); return; }
+  if (!ed.sel) return;
+  const digit = /^(Digit|Numpad)(\d)$/.exec(code);
+  if (digit && e.shiftKey) {
+    const s = +digit[2];
+    if (s >= 1 && s <= 6) { done(); edSelect(ed.sel.i, s); }
+    return;
+  }
+  if (digit) {
     // two digits typed quickly make a two-digit fret (1 then 2 = 12)
-    const now = performance.now(), two = vedit.digit && now - vedit.digitAt < 800 && +(vedit.digit + k) <= 24;
-    const f = two ? +(vedit.digit + k) : +k;
-    vedit.digit = two ? "" : k; vedit.digitAt = now;
-    veditSetFret(f);
-  } else if (k === "ArrowLeft") veditMove(-1, 0);
-  else if (k === "ArrowRight") veditMove(1, 0);
-  else if (k === "ArrowUp") veditMove(0, -1);
-  else if (k === "ArrowDown") veditMove(0, 1);
-  else if (k === "Delete" || k === "Backspace") veditSetFret(null);
-  else if (k === "Enter") veditInsert(true);
-  else if (k === "Escape") { vedit.sel = null; previewEditor(); }
-  else return;
-  e.preventDefault();
+    const d = digit[2], now = performance.now();
+    const two = ed.digit !== "" && now - ed.digitAt < 800 && +(ed.digit + d) <= 24;
+    const f = two ? +(ed.digit + d) : +d;
+    ed.digit = two ? "" : d; ed.digitAt = now;
+    done(); edFret(f);
+    return;
+  }
+  if (k === "End") { done(); edSelect(ed.song.steps.length - 1, ed.sel.s); }
+  else if (k === "ArrowLeft") { done(); edMove(-1, 0); }
+  else if (k === "ArrowRight") { done(); edMove(1, 0); }
+  else if (k === "ArrowUp") { done(); edMove(0, -1); }
+  else if (k === "ArrowDown") { done(); edMove(0, 1); }
+  else if (k === "Delete" || k === "Backspace") { done(); if (e.shiftKey) edDelete(); else edFret(null); }
+  else if (k === "Enter") { done(); edInsert(!e.shiftKey); }
+  else if (key === "h" || key === "p" || key === "s") { done(); edTech(key, true); }
+  else if (key === "b") { done(); edTech(e.shiftKey ? "b1" : "b2", true); }
+  else if (key === "d") { done(); edTech("d", true); }
+  else if (key === "r") { done(); edRest(); }
+  else if (key === "l") { done(); edLoose(!ed.song.steps[ed.sel.i].loose); }
+  else if (k === "[") { done(); edLenStep(-1); }
+  else if (k === "]") { done(); edLenStep(1); }
+  else if (key === "c") { done(); ed.popOpen = true; edShowPop(); $("popChord").focus(); $("popChord").select(); }
 });
-
-previewEditor();

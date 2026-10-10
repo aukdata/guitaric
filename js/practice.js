@@ -281,40 +281,9 @@ function stopModel() {
 function playModel() {
   ensureContext();
   if (model.sources.length) { stopModel(); return; }
-  const steps = practice.song.steps, cell = 60 / effectiveBpm() * 4 / practice.song.grid;
-  const t0 = ctx.currentTime + 0.15;
-  let t = t0;
-  steps.forEach((st, i) => {
-    const dur = st.len * cell, start = t;
-    model.timers.push(setTimeout(() => { practice.tab.setPlaying(i); practice.tab.scrollTo(i); }, (start - ctx.currentTime) * 1000));
-    t += dur;
-    if (!st.notes.length) return;
-    // a note rings until the next one starts (the last one rings on)
-    // ties after this step keep it ringing
-    let held = dur, k = i + 1;
-    while (steps[k] && steps[k].tie) held += steps[k++].len * cell;
-    const ring = k >= steps.length ? held + 1.6 : held + 0.05;
-    const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + 0.05, i + 1);
-    const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
-    const src = ctx.createBufferSource(); src.buffer = b;
-    // bends glide up into the bent pitch; a release starts bent and comes down
-    if (st.tech === "b") {
-      src.playbackRate.setValueAtTime(2 ** (-st.bend / 12), start);
-      src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.2, dur * 0.6));
-    } else if (st.tech === "d") {
-      src.playbackRate.setValueAtTime(2 ** (2 / 12), start);
-      src.playbackRate.setValueAtTime(2 ** (2 / 12), start + Math.min(0.08, dur * 0.3));
-      src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.25, dur * 0.8));
-    }
-    const g = ctx.createGain();
-    const vol = st.tech === "h" || st.tech === "p" || st.tech === "s" ? 1.6 : 2.5; // not picked: softer
-    g.gain.setValueAtTime(vol, start);
-    g.gain.setValueAtTime(vol, start + ring - 0.04);
-    g.gain.linearRampToValueAtTime(0, start + ring);
-    src.connect(g); g.connect(ctx.destination); src.start(start); src.stop(start + ring + 0.02);
-    model.sources.push(src);
-  });
-  const end = t + 1.6;
+  const r = scheduleSong(practice.song, 0, effectiveBpm(), ctx.destination, i => { practice.tab.setPlaying(i); practice.tab.scrollTo(i); });
+  model.sources = r.sources; model.timers = r.timers;
+  const end = r.end + 1.6;
   model.timers.push(setTimeout(stopModel, (end - ctx.currentTime) * 1000));
   practice.mutedUntil = end + 0.2;
   practice.tracker.reset();

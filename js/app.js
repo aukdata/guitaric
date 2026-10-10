@@ -1,5 +1,5 @@
 /* ===== app shell: mode switching, offline support ===== */
-const VIEWS = ["practice", "editor", "analyze"];
+const VIEWS = ["practice", "editor", "edit", "analyze"]; // "edit" = the full-screen TAB editor
 const DEFAULT_VIEW = "practice";
 
 function showView(name) {
@@ -8,17 +8,22 @@ function showView(name) {
   if (name !== "analyze" && micStream) stopMic();
   if (name !== "practice" && practice.stream) stopPracticeMic();
   if (name !== "practice" && metro.on) stopMetronome();
+  if (name !== "edit") edStop(false);
   for (const v of VIEWS) $("view-" + v).hidden = v !== name;
-  document.querySelectorAll(".tab").forEach(t => {
-    if (t.dataset.view === name) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
+  // the editor takes the whole screen (no app header or mode tabs)
+  document.body.classList.toggle("editing", name === "edit");
+  const tabName = name === "edit" ? "editor" : name;
+  document.querySelectorAll("nav .tab").forEach(t => {
+    if (t.dataset.view === tabName) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
   });
+  if (name === "edit") edEnsureOpen();
   try { localStorage.setItem("guitaric.view", name); } catch (e) {}
   // canvases measure 0 while hidden; redraw once visible
   if (name === "analyze") drawChroma(shownChroma);
   if (name === "practice" && practice.tab) practice.tab.scrollTo(practice.idx);
 }
 
-document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+document.querySelectorAll("nav .tab").forEach(t => t.addEventListener("click", () => {
   history.replaceState(null, "", "#" + t.dataset.view);
   showView(t.dataset.view);
 }));

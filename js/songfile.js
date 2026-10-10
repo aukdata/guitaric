@@ -54,7 +54,6 @@ async function importFiles(files) {
   renderSongList(); fillSongSelect();
   const msg = [added.length ? `${added.length}曲を読み込みました` : "", skipped ? `${skipped}曲は保存済みのため省きました` : "", ...problems].filter(Boolean);
   $("eFileMsg").textContent = msg.join(" / ") || "読み込める曲がありませんでした";
-  if (added.length === 1) openEditor(added[0]);
 }
 
 $("eExportAll").addEventListener("click", () => {

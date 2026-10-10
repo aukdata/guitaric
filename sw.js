@@ -1,6 +1,6 @@
 // Network-first for app files so updates show up right away; falls back to cache when offline.
-const CACHE = "guitaric-v12";
-const ASSETS = ["./", "index.html", "css/style.css", "js/core.js", "js/songs.js", "js/tab.js", "js/analyze.js", "js/metronome.js", "js/practice.js", "js/editor.js", "js/tabedit.js", "js/songfile.js", "js/app.js", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png"];
+const CACHE = "guitaric-v13";
+const ASSETS = ["./", "index.html", "css/style.css", "js/core.js", "js/songs.js", "js/tab.js", "js/analyze.js", "js/metronome.js", "js/player.js", "js/practice.js", "js/editor.js", "js/tabedit.js", "js/songfile.js", "js/app.js", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

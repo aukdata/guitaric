@@ -81,7 +81,10 @@
 
   <main id="view-editor" class="view" hidden>
     <section class="panel">
-      <h2>曲の一覧</h2>
+      <div class="editor-head">
+        <h2>曲の一覧</h2>
+        <button id="eNew" type="button" class="primary">＋ 新しい曲</button>
+      </div>
       <div class="controls file-row">
         <button id="eExportAll" type="button">自分の曲をすべて書き出す</button>
         <label class="filebtn" for="eImport">ファイルから読み込む<input id="eImport" type="file" accept=".json,.txt,application/json,text/plain" multiple></label>
@@ -89,69 +92,110 @@
       </div>
       <div id="eList" class="song-list"></div>
     </section>
+  </main>
 
-    <section class="panel editor">
-      <div class="editor-head">
-        <h2 id="eHeading">新しい曲</h2>
-        <button id="eNew" type="button">新しい曲</button>
+  <main id="view-edit" class="view ed" hidden>
+    <div class="ed-toolbar" role="toolbar" aria-label="編集ツール">
+      <div class="ed-group">
+        <button id="edBack" type="button" title="曲の一覧に戻る">← 一覧</button>
+        <input id="edTitle" class="ed-title" type="text" placeholder="無題の曲" aria-label="タイトル">
+        <button id="edSave" type="button" class="primary" title="保存（Ctrl+S）">保存</button>
       </div>
-      <div class="field-row">
-        <label>タイトル<input id="eTitle" type="text" placeholder="無題の曲"></label>
-        <label class="bpm">BPM<input id="eBpm" type="number" min="30" max="240" value="80"></label>
-      </div>
-      <label>コードや音<textarea id="eText" rows="4" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="例：C G Am F"></textarea></label>
-      <p id="eErrors" class="errors"></p>
-      <div class="examples">
-        <span>例：</span>
-        <button type="button" data-insert="C G Am F">C G Am F</button>
-        <button type="button" data-insert="| C G | Am F |">| C G | Am F |</button>
-        <button type="button" data-insert="6-3 5-2 4-0 4-2:2 r 5-2+4-2">6-3 5-2 4-0 …</button>
-      </div>
-      <details class="howto">
-        <summary>書き方</summary>
-        <ul>
-          <li><code>C G Am F</code> … 1小節に1コード。<code>Bb</code> <code>F#m</code> <code>C7</code> <code>Gmaj7</code> なども書けます</li>
-          <li><code>| C G | Am F |</code> … 縦棒で小節を区切ると、1小節に複数のコードを入れられます</li>
-          <li><code>C*4</code> … 1小節の中でCを4回弾きます。コードが変わる直前の1回は判定がゆるめになります</li>
-          <li><code>C?</code> <code>6-3?</code> … 末尾に ? を付けると判定がゆるめになり、弾けば何の音でも進みます</li>
-          <li><code>4-7h</code> <code>4-5p</code> <code>5-5s</code> … ハンマリング・プリング・スライドで弾く音です。TAB に H / P / sl. が付きます（判定は音程だけ）</li>
-          <li><code>3-7b</code> <code>3-7b1</code> <code>3-7d</code> … 1音チョーキング・半音チョーキング（上げた音程で判定します）、チョーキングを戻す音です</li>
-          <li><code>~:8</code> … タイ。直前の音を8マス分のばします（小節をまたぐときに使います）</li>
-          <li><code>@16</code> … 先頭に書くと1マスが16分音符になります（書かなければ8分音符）</li>
-          <li><code>6-3</code> … 6弦3フレット（弦は 1＝細い弦 〜 6＝太い弦）</li>
-          <li><code>6-3+5-2</code> … 同時に弾く音、<code>r</code> … 休符</li>
-          <li><code>:2</code> … 長さ（例 <code>6-3:2</code> は8分音符2つ分）</li>
-        </ul>
-      </details>
-      <div id="eTab" class="tab-scroll"></div>
-      <button id="vStart" type="button" hidden>TABで書き始める（1小節追加）</button>
-      <div id="vEdit" class="vedit" aria-label="TAB譜のクリック編集">
-        <p id="vWhere" class="vwhere" role="status"></p>
-        <div id="vPad" class="vpad" aria-label="フレット"></div>
-        <div class="vrow">
-          <label class="inline">長さ<select id="vLen"></select></label>
-          <label class="inline">奏法<select id="vTech">
-            <option value="">ふつう</option><option value="h">ハンマリング</option><option value="p">プリング</option><option value="s">スライド</option>
-            <option value="b2">チョーキング（1音）</option><option value="b1">チョーキング（半音）</option><option value="d">チョーキングを戻す</option>
-          </select></label>
-          <label class="inline"><input id="vLoose" type="checkbox">判定ゆるめ</label>
-          <span class="vchord"><input id="vChord" type="text" placeholder="コード名" aria-label="コード名" autocapitalize="off" autocomplete="off" spellcheck="false"><button id="vChordSet" type="button">コードにする</button></span>
+      <div class="ed-group">
+        <button id="edHome" type="button" class="icon" title="先頭へ（Home）" aria-label="先頭へ">⏮</button>
+        <button id="edPlay" type="button" class="icon play" title="再生 / 停止（Space）" aria-label="再生">▶</button>
+        <div class="seg" role="radiogroup" aria-label="停止したとき">
+          <button type="button" role="radio" data-stop="stay" title="停止した位置にカーソルを置く">止めた位置</button>
+          <button type="button" role="radio" data-stop="return" title="再生を始めた位置にカーソルを戻す">開始位置へ戻る</button>
         </div>
-        <div class="vrow">
-          <button id="vInsBefore" type="button">← 前に追加</button>
-          <button id="vInsAfter" type="button">後ろに追加 →</button>
-          <button id="vRest" type="button">休符にする</button>
-          <button id="vDel" type="button" class="danger">削除</button>
-          <button id="vAddBar" type="button">小節を追加</button>
-          <button id="vUndo" type="button">元に戻す</button>
+        <label class="inline">BPM<input id="edBpm" type="number" min="30" max="240" value="80" inputmode="numeric"></label>
+        <label class="inline vol">音量<input id="edVol" type="range" min="0" max="1" step="0.05" value="0.7"></label>
+      </div>
+      <div class="ed-group">
+        <button id="edUndo" type="button" class="icon" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶</button>
+        <button id="edRedo" type="button" class="icon" title="やり直す（Ctrl+Y）" aria-label="やり直す">↷</button>
+        <button id="edAddBar" type="button" title="最後に1小節追加">＋小節</button>
+        <button id="edText" type="button" title="コードや音を文字で入力">テキスト入力</button>
+        <button id="edKeys" type="button" title="キーボードショートカット（?）">ショートカット</button>
+      </div>
+    </div>
+    <p id="edStatus" class="ed-status" role="status"></p>
+    <div id="edBody" class="ed-body">
+      <div id="edTab" class="tab-scroll"></div>
+      <div id="edPop" class="ed-pop" role="dialog" aria-label="音の編集" hidden>
+        <div class="pop-head"><span id="popWhere"></span><button id="popClose" type="button" class="icon" aria-label="閉じる（Esc）">×</button></div>
+        <div class="pop-row"><span class="pop-label">弦</span><div id="popStrings" class="seg small"></div></div>
+        <div id="popPad" class="pad" aria-label="フレット"></div>
+        <div class="pop-row"><span class="pop-label">長さ</span><select id="popLen" aria-label="長さ"></select>
+          <label class="inline"><input id="popLoose" type="checkbox">判定ゆるめ</label></div>
+        <div class="pop-row"><span class="pop-label">奏法</span><div id="popTech" class="seg small">
+          <button type="button" data-tech="">なし</button><button type="button" data-tech="h" title="ハンマリング（H）">H</button><button type="button" data-tech="p" title="プリング（P）">P</button><button type="button" data-tech="s" title="スライド（S）">S</button><button type="button" data-tech="b2" title="1音チョーキング（B）">↑1音</button><button type="button" data-tech="b1" title="半音チョーキング（Shift+B）">↑半音</button><button type="button" data-tech="d" title="チョーキングを戻す（D）">↓戻す</button>
+        </div></div>
+        <div class="pop-row"><span class="pop-label">コード</span><input id="popChord" type="text" placeholder="Am など" aria-label="コード名" autocapitalize="off" autocomplete="off" spellcheck="false"><button id="popChordSet" type="button">コードにする</button></div>
+        <div class="pop-row actions">
+          <button id="popInsBefore" type="button" title="前に追加（Shift+Enter）">← 前に追加</button>
+          <button id="popInsAfter" type="button" title="後ろに追加（Enter）">後ろに追加 →</button>
+          <button id="popRest" type="button" title="休符にする（R）">休符</button>
+          <button id="popDel" type="button" class="danger" title="削除（Shift+Delete）">削除</button>
         </div>
-        <p class="vkeys">キーボード：数字でフレット（12 のように続けて押すと2桁）、← → で前後、↑ ↓ で弦、Delete で消す、Enter で後ろに追加、Ctrl+Z で元に戻す</p>
       </div>
-      <div class="controls">
-        <button id="eSave" type="button" class="primary">保存</button>
-        <span id="eSaved" class="saved" role="status"></span>
-      </div>
-    </section>
+    </div>
+
+    <dialog id="edTextDlg" class="ed-dlg">
+      <form method="dialog">
+        <h2>テキスト入力</h2>
+        <p class="hint">コードや音を文字で書いて「反映」を押すと、TAB譜に反映されます。</p>
+        <textarea id="edTextArea" rows="6" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+        <p id="edTextErr" class="errors"></p>
+        <details class="howto">
+          <summary>書き方</summary>
+          <ul>
+            <li><code>C G Am F</code> … 1小節に1コード。<code>Bb</code> <code>F#m</code> <code>C7</code> <code>Gmaj7</code> なども書けます</li>
+            <li><code>| C G | Am F |</code> … 縦棒で小節を区切ると、1小節に複数のコードを入れられます</li>
+            <li><code>C*4</code> … 1小節の中でCを4回弾きます。コードが変わる直前の1回は判定がゆるめになります</li>
+            <li><code>C?</code> <code>6-3?</code> … 末尾に ? を付けると判定がゆるめになり、弾けば何の音でも進みます</li>
+            <li><code>6-3</code> … 6弦3フレット（弦は 1＝細い弦 〜 6＝太い弦）、<code>6-3+5-2</code> … 同時に弾く音、<code>r</code> … 休符</li>
+            <li><code>4-7h</code> <code>4-5p</code> <code>5-5s</code> … ハンマリング・プリング・スライド</li>
+            <li><code>3-7b</code> <code>3-7b1</code> <code>3-7d</code> … 1音チョーキング・半音チョーキング・チョーキングを戻す</li>
+            <li><code>~:8</code> … タイ。直前の音を8マス分のばします</li>
+            <li><code>:2</code> … 長さ（例 <code>6-3:2</code> は8分音符2つ分）。<code>@16</code> を先頭に書くと1マスが16分音符になります</li>
+          </ul>
+        </details>
+        <div class="dlg-actions">
+          <button value="cancel" type="submit">キャンセル</button>
+          <button id="edTextApply" type="button" class="primary">反映</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="edKeysDlg" class="ed-dlg">
+      <form method="dialog">
+        <h2>キーボードショートカット</h2>
+        <table class="keys">
+          <tr><td><kbd>0</kbd>〜<kbd>9</kbd></td><td>選択中の弦のフレット（<kbd>1</kbd><kbd>2</kbd> と続けて押すと 12）</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>1</kbd>〜<kbd>6</kbd></td><td>弦を選ぶ</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>前・次の音へ</td></tr>
+          <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>上・下の弦へ</td></tr>
+          <tr><td><kbd>H</kbd> <kbd>P</kbd> <kbd>S</kbd></td><td>ハンマリング・プリング・スライド（もう一度押すと解除）</td></tr>
+          <tr><td><kbd>B</kbd> / <kbd>Shift</kbd>+<kbd>B</kbd> / <kbd>D</kbd></td><td>1音チョーキング / 半音チョーキング / チョーキングを戻す</td></tr>
+          <tr><td><kbd>R</kbd></td><td>休符にする</td></tr>
+          <tr><td><kbd>L</kbd></td><td>判定ゆるめの切り替え</td></tr>
+          <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>長さを短く・長く</td></tr>
+          <tr><td><kbd>C</kbd></td><td>コード名を入力</td></tr>
+          <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>選択中の弦の音を消す</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>Delete</kbd></td><td>音（列）ごと削除</td></tr>
+          <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>後ろ / 前に追加</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> <kbd>X</kbd> <kbd>V</kbd></td><td>コピー・切り取り・貼り付け（後ろに挿入）</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>複製</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>再生 / 停止（選択中の位置から）</td></tr>
+          <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>先頭 / 最後へ</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>元に戻す / やり直す</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>保存</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>編集ウィンドウを閉じる</td></tr>
+        </table>
+        <div class="dlg-actions"><button type="submit" class="primary">閉じる</button></div>
+      </form>
+    </dialog>
   </main>
 
   <main id="view-analyze" class="view" hidden>
@@ -208,6 +252,7 @@
 <script src="js/tab.js"></script>
 <script src="js/analyze.js"></script>
 <script src="js/metronome.js"></script>
+<script src="js/player.js"></script>
 <script src="js/practice.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/tabedit.js"></script>
