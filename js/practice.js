@@ -318,7 +318,6 @@ transport.listeners.push(key => {
 });
 
 $("pMic").addEventListener("click", () => (practice.stream ? stopPracticeMic() : startPracticeMic()));
-$("pRestart").addEventListener("click", restartPractice);
 $("pAgain").addEventListener("click", restartPractice);
 $("pPrev").addEventListener("click", () => {
   let i = practice.idx - 1;
@@ -344,7 +343,8 @@ document.addEventListener("visibilitychange", async () => {
   }
 });
 
-$("prHome").addEventListener("click", () => { if (model.sources.length) stopModel(); gotoStep(playableIndex(0)); });
+// ⏮: start over from the top (clears the results too)
+$("prHome").addEventListener("click", () => { if (model.sources.length) { model.from = null; stopModel(); } restartPractice(); });
 $("prBack").addEventListener("click", () => { location.hash = "songs"; });
 // 編集: back to the editor's draft when practicing it, else open this song in the editor
 $("prEdit").addEventListener("click", () => {

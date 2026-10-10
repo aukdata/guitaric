@@ -466,6 +466,8 @@ new MutationObserver(() => { if (ed.sel && !$("edTab").querySelector(".tab-curso
 $("edBack").addEventListener("click", edBack);
 $("edSave").addEventListener("click", edSave);
 $("edPractice").addEventListener("click", edPractice);
+$("edPrev").addEventListener("click", () => edMove(-1, 0));
+$("edNext").addEventListener("click", () => edMove(1, 0));
 $("edTitle").addEventListener("input", () => { $("edSave").dataset.dirty = edDirty() ? "1" : ""; edSaveDraft(); });
 $("edBpm").addEventListener("input", () => { $("edSave").dataset.dirty = edDirty() ? "1" : ""; edSaveDraft(); });
 $("edPlay").addEventListener("click", edPlay);

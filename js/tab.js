@@ -1,5 +1,6 @@
 /* ===== TAB rendering (SVG) ===== */
-const TAB = { cell: 30, minStep: 40, row: 22, top: 46, pad: 16 };
+// scale: drawn size on screen relative to the layout units below (0.7 = 70%)
+const TAB = { cell: 30, minStep: 40, row: 22, top: 46, pad: 16, scale: 0.7 };
 const STRING_LABELS = ["e", "B", "G", "D", "A", "E"];
 
 // Draws the song as TAB staves that wrap to the container's width (at bar lines when a bar fits).
@@ -33,7 +34,7 @@ function renderTab(container, song, opts = {}) {
   let groups = [], rowEls = [], playing = -1, lastWidth = 0;
 
   function layout() {
-    const avail = Math.floor(Math.max(TAB.minStep * 4, (container.clientWidth || 800) - left - TAB.pad));
+    const avail = Math.floor(Math.max(TAB.minStep * 4, (container.clientWidth || 800) / TAB.scale - left - TAB.pad));
     const widths = fullWidths.map(w => Math.min(w, avail)); // a long rest or note never overflows a row
     lastWidth = container.clientWidth;
     // pack whole bars into rows; a bar wider than the screen breaks between steps
@@ -62,7 +63,7 @@ function renderTab(container, song, opts = {}) {
     rows.forEach((r, ri) => {
       const end = r.steps.length ? at[r.steps[r.steps.length - 1]].x + at[r.steps[r.steps.length - 1]].w : left;
       const width = Math.floor(end + TAB.pad);
-      const svg = mk("svg", { class: "tab", width, height, viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": `TAB譜 ${ri + 1}段目` });
+      const svg = mk("svg", { class: "tab", width: width * TAB.scale, height: height * TAB.scale, viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": `TAB譜 ${ri + 1}段目` });
       const lines = mk("g", { class: "tab-lines" }, svg);
       for (let s = 0; s < 6; s++) {
         const y = TAB.top + s * TAB.row;

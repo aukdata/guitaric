@@ -28,25 +28,27 @@
 
   <main id="view-practice" class="view ed pr" hidden>
     <div class="ed-toolbar" role="toolbar" aria-label="練習の操作">
-      <div class="ed-group">
+      <div class="ed-group tb-main">
         <button id="prBack" type="button" title="曲の一覧に戻る">← 一覧</button>
         <span id="prTitle" class="ed-title-text"></span>
         <button id="prEdit" type="button" title="この曲を編集する">編集</button>
+        <button type="button" class="icon tb-expand" aria-expanded="false" title="ツールを表示" aria-label="ツールを表示">▾</button>
       </div>
-      <div class="ed-group">
+      <div class="ed-group tb-row">
+        <button id="pPrev" type="button" class="icon" title="前の音へ（←）" aria-label="前の音へ">‹</button>
+        <button id="pNext" type="button" class="icon" title="次の音へとばす（→）" aria-label="次の音へ">›</button>
+        <span class="tb-sep" aria-hidden="true"></span>
+        <button id="prHome" type="button" class="icon" title="はじめから" aria-label="はじめから">⏮</button>
+        <button id="pModel" type="button" class="icon play" title="お手本を再生 / 停止（Space）" aria-label="お手本を再生">▶</button>
+        <button type="button" class="icon t-return" aria-pressed="true" title="↩ ON：停止すると再生を始めた位置に戻る／OFF：止めた位置のまま" aria-label="停止したら開始位置に戻る">↩</button>
+        <button type="button" class="icon tb-more-btn" aria-expanded="false" title="クリック・BPM・速さ" aria-label="クリック・BPM・速さ">…</button>
+        <span class="tb-sep" aria-hidden="true"></span>
         <button id="pMic" class="primary" type="button"><span class="dot"></span>マイクを開始</button>
         <div class="meter" aria-label="入力レベル"><i id="pMeter"></i></div>
-        <button id="pRestart" type="button">はじめから</button>
       </div>
-      <div class="ed-group">
-        <button id="prHome" type="button" class="icon" title="先頭へ" aria-label="先頭へ">⏮</button>
-        <button id="pModel" type="button" class="icon play" title="お手本を再生 / 停止（Space）" aria-label="お手本を再生">▶</button>
-        <div class="seg" role="radiogroup" aria-label="停止したとき">
-          <button type="button" role="radio" data-stop="stay" title="停止した位置にカーソルを置く">止めた位置</button>
-          <button type="button" role="radio" data-stop="return" title="再生を始めた位置にカーソルを戻す">開始位置へ戻る</button>
-        </div>
+      <div class="ed-group tb-more" role="group" aria-label="テンポとクリック">
         <span class="inline-label">クリック</span>
-        <div class="seg" role="radiogroup" aria-label="再生中のクリック">
+        <div class="seg" role="radiogroup" aria-label="クリック">
           <button type="button" role="radio" data-click="0">なし</button>
           <button type="button" role="radio" data-click="4">4分</button>
           <button type="button" role="radio" data-click="8">8分</button>
@@ -63,10 +65,6 @@
       <span id="pProgress" class="progress">0 / 0</span>
       <span id="pFeedback" class="feedback"></span>
       <span id="pWhere" class="target-where"></span>
-      <span class="stepper">
-        <button id="pPrev" type="button" aria-label="前の音へ" title="前の音へ（←）">◀</button>
-        <button id="pNext" type="button" aria-label="とばす" title="とばす（→）">▶</button>
-      </span>
     </div>
     <div id="pResult" class="result" hidden>
       <p id="pResultText"></p>
@@ -93,21 +91,31 @@
 
   <main id="view-edit" class="view ed" hidden>
     <div class="ed-toolbar" role="toolbar" aria-label="編集ツール">
-      <div class="ed-group">
+      <div class="ed-group tb-main">
         <button id="edBack" type="button" title="曲の一覧に戻る">← 一覧</button>
         <input id="edTitle" class="ed-title" type="text" placeholder="無題の曲" aria-label="タイトル">
         <button id="edSave" type="button" class="primary" title="保存（Ctrl+S）">保存</button>
         <button id="edPractice" type="button" title="この曲を練習する">練習</button>
+        <button type="button" class="icon tb-expand" aria-expanded="false" title="ツールを表示" aria-label="ツールを表示">▾</button>
       </div>
-      <div class="ed-group">
+      <div class="ed-group tb-row">
+        <button id="edPrev" type="button" class="icon" title="前の音へ（←）" aria-label="前の音へ">‹</button>
+        <button id="edNext" type="button" class="icon" title="次の音へ（→）" aria-label="次の音へ">›</button>
+        <span class="tb-sep" aria-hidden="true"></span>
         <button id="edHome" type="button" class="icon" title="先頭へ（Home）" aria-label="先頭へ">⏮</button>
         <button id="edPlay" type="button" class="icon play" title="再生 / 停止（Space）" aria-label="再生">▶</button>
-        <div class="seg" role="radiogroup" aria-label="停止したとき">
-          <button type="button" role="radio" data-stop="stay" title="停止した位置にカーソルを置く">止めた位置</button>
-          <button type="button" role="radio" data-stop="return" title="再生を始めた位置にカーソルを戻す">開始位置へ戻る</button>
-        </div>
+        <button type="button" class="icon t-return" aria-pressed="true" title="↩ ON：停止すると再生を始めた位置に戻る／OFF：止めた位置のまま" aria-label="停止したら開始位置に戻る">↩</button>
+        <button type="button" class="icon tb-more-btn" aria-expanded="false" title="クリック・BPM・速さ" aria-label="クリック・BPM・速さ">…</button>
+        <span class="tb-sep" aria-hidden="true"></span>
+        <button id="edUndo" type="button" class="icon" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶</button>
+        <button id="edRedo" type="button" class="icon" title="やり直す（Ctrl+Y）" aria-label="やり直す">↷</button>
+        <button id="edAddBar" type="button" title="最後に1小節追加">＋小節</button>
+        <button id="edText" type="button" title="コードや音を文字で入力">テキスト</button>
+        <button id="edKeys" type="button" title="キーボードショートカット（?）">ショートカット</button>
+      </div>
+      <div class="ed-group tb-more" role="group" aria-label="テンポとクリック">
         <span class="inline-label">クリック</span>
-        <div class="seg" role="radiogroup" aria-label="再生中のクリック">
+        <div class="seg" role="radiogroup" aria-label="クリック">
           <button type="button" role="radio" data-click="0">なし</button>
           <button type="button" role="radio" data-click="4">4分</button>
           <button type="button" role="radio" data-click="8">8分</button>
@@ -118,13 +126,6 @@
           <option value="0.75">0.75倍</option><option value="1" selected>1倍</option><option value="1.25">1.25倍</option><option value="1.5">1.5倍</option>
         </select></label>
         <label class="inline vol">音量<input class="t-vol" type="range" min="0" max="1" step="0.05" value="0.7" aria-label="音量"></label>
-      </div>
-      <div class="ed-group">
-        <button id="edUndo" type="button" class="icon" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶</button>
-        <button id="edRedo" type="button" class="icon" title="やり直す（Ctrl+Y）" aria-label="やり直す">↷</button>
-        <button id="edAddBar" type="button" title="最後に1小節追加">＋小節</button>
-        <button id="edText" type="button" title="コードや音を文字で入力">テキスト入力</button>
-        <button id="edKeys" type="button" title="キーボードショートカット（?）">ショートカット</button>
       </div>
     </div>
     <p id="edStatus" class="ed-status" role="status"></p>
