@@ -121,6 +121,8 @@ svg.tab { display: block; }
 .tab-bg { fill: var(--surface); }
 .tab-fret { font: 500 14px var(--f-mono); fill: var(--fg); text-anchor: middle; }
 .tab-chord { font: 700 14px var(--f-body); fill: var(--fg); text-anchor: middle; }
+.tab-tech { font: italic 600 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
+.tab-slur { fill: none; stroke: var(--muted); stroke-width: 1.2; }
 .tab-rest { font: 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
 .tab-step[data-state="current"] .tab-hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
 .tab-step[data-state="current"] .tab-bg { fill: var(--accent-soft); }

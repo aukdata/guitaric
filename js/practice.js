@@ -67,7 +67,7 @@ function gotoStep(i) {
   practice.tab.scrollTo(i);
   const st = steps[i];
   $("pTarget").textContent = stepLabel(st);
-  $("pWhere").textContent = practice.loose ? (st.loose ? (st.bend ? stepWhere(st) + " · 判定ゆるめ" : "判定ゆるめ") : "コードチェンジ前（判定ゆるめ）") : stepWhere(st);
+  $("pWhere").textContent = practice.loose ? (st.loose ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : stepWhere(st);
   $("pProgress").textContent = `${i + 1} / ${steps.length}`;
   setFeedback(practice.stream ? "弾いてください" : "「マイクを開始」を押すと判定が始まります", "");
 }

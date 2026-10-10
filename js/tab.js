@@ -37,7 +37,20 @@ function renderTab(container, song, opts = {}) {
     mk("rect", { x: sx + 2, y: 4, width: w - 4, height: height - 8, rx: 6, class: "tab-hl" }, g);
     const cx = sx + Math.min(w, TAB.minStep) / 2;
     if (st.chord) { const t = mk("text", { x: cx, y: 20, class: "tab-chord" }, g); t.textContent = st.chord; }
-    else if (st.bend) { const t = mk("text", { x: cx, y: 20, class: "tab-chord" }, g); t.textContent = st.bend === "up" ? "↑full" : "↓"; }
+    else if (st.tech) {
+      const t = mk("text", { x: cx, y: 20, class: "tab-tech" }, g);
+      t.textContent = { h: "H", p: "P", s: "sl.", b: st.bend === 1 ? "↑½" : "↑full", d: "↓" }[st.tech];
+      // a slur (H/P) or a slant line (slide) from the previous note on the same string
+      const [s, f] = st.notes[0], y = TAB.top + (s - 1) * TAB.row;
+      const prev = song.steps[i - 1], pn = prev && !prev.chord && prev.notes.find(n => n[0] === s);
+      if ((st.tech === "h" || st.tech === "p") && pn && pn[0] === s) {
+        const px = xs[i - 1].x + Math.min(xs[i - 1].w, TAB.minStep) / 2;
+        mk("path", { d: `M${px + 4} ${y - 9} Q${(px + cx) / 2} ${y - 20} ${cx - 4} ${y - 9}`, class: "tab-slur" }, g);
+      } else if (st.tech === "s") {
+        const up = !(pn && pn[0] === s) || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
+        mk("line", { x1: x0, x2: x1, y1: up ? y + 5 : y - 5, y2: up ? y - 5 : y + 5, class: "tab-slur" }, g);
+      }
+    }
     for (const [s, f] of st.notes) {
       const y = TAB.top + (s - 1) * TAB.row, label = String(f);
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
@@ -59,6 +72,8 @@ function renderTab(container, song, opts = {}) {
   };
 }
 
-const stepLabel = st => st.chord || (st.notes.length ? st.notes.map(([s, f]) => noteName(OPEN_MIDI[s] + f)).join("+") : "休符");
+const stepLabel = st => st.chord || (st.tech === "b" ? `${noteName(OPEN_MIDI[st.notes[0][0]] + st.notes[0][1])}→${noteName(stepMidis(st)[0])}`
+  : st.notes.length ? st.notes.map(([s, f]) => noteName(OPEN_MIDI[s] + f)).join("+") : "休符");
 const stepWhere = st => st.chord ? "" : st.notes.map(([s, f]) => `${s}弦${f}フレット`).join("・")
-  + (st.bend ? (st.bend === "up" ? "（チョーキング）" : "（チョーキングを戻す）") : "");
+  + (st.tech ? { h: "（ハンマリング）", p: "（プリング）", s: "（スライド）", d: "（チョーキングを戻す）",
+    b: `（${st.bend === 1 ? "半音" : "1音"}チョーキング → ${noteName(stepMidis(st)[0])}）` }[st.tech] : "");
