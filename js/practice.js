@@ -74,7 +74,7 @@ function gotoStep(i) {
   const st = steps[i];
   $("pWhere").textContent = practice.loose ? (st.loose ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : "";
   $("pProgress").textContent = `${i + 1} / ${steps.length}`;
-  setFeedback(practice.stream ? "弾いてください" : "● を押すとマイクで判定が始まります", "");
+  setFeedback("", "");
 }
 
 function setFeedback(msg, kind) {
@@ -241,7 +241,7 @@ async function startPracticeMic() {
   practice.tapOut = ctx.createGain(); practice.tapOut.gain.value = 0;
   practice.source.connect(practice.tap); practice.tap.connect(practice.tapOut); practice.tapOut.connect(ctx.destination);
   $("pMic").setAttribute("aria-pressed", "true"); $("pMic").setAttribute("aria-label", "マイクを停止"); $("pMic").title = "マイクを停止";
-  setFeedback("弾いてください", "");
+  setFeedback("", "");
   updateMetronome();
   await keepScreenOn();
   const buf = new Float32Array(FFT_SIZE);

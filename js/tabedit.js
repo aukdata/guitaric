@@ -106,7 +106,7 @@ function edRender() {
   if (ed.sel && ed.sel.i >= n) ed.sel = n ? { i: n - 1, s: ed.sel.s } : null;
   if (!ed.sel && n) ed.sel = { i: 0, s: 1 };
   ed.tab = n ? renderTab($("edTab"), song) : null;
-  if (!n) $("edTab").innerHTML = '<p class="empty">まだ何もありません。ツールバーの「＋小節」か「テキスト入力」で始めてください。</p>';
+  if (!n) $("edTab").innerHTML = '<p class="empty">まだ何もありません</p>';
   if (ed.sel && ed.tab) ed.tab.setState(ed.sel.i, "current");
   if (ed.play && ed.tab) ed.tab.setPlaying(ed.play.cur);
   edDrawCursor();
@@ -129,7 +129,7 @@ function edStatus(msg) {
   const el = $("edStatus");
   el.classList.toggle("bad", !!ed.song.errors.length);
   if (ed.song.errors.length) {
-    el.textContent = "テキストに読めない所があります（ツールバーの「テキスト入力」で直してください）：" + ed.song.errors.join(" / ");
+    el.textContent = "読めない所があります：" + ed.song.errors.join(" / ");
     return;
   }
   if (msg) { el.textContent = msg; return; }

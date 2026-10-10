@@ -38,7 +38,7 @@ function renderSongList() {
   $("eList").replaceChildren(...mine.map(songRow));
   if (!mine.length) {
     const p = document.createElement("p"); p.className = "empty";
-    p.textContent = "まだありません。＋ で新しい曲を作るか、プリセットの鉛筆からコピーして作れます。";
+    p.textContent = "まだありません";
     $("eList").append(p);
   }
   $("ePresets").replaceChildren(...songs.filter(s => s.preset).map(songRow));

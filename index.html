@@ -42,7 +42,7 @@
         <button type="button" class="icon t-return" aria-pressed="true" title="↩ ON：停止すると再生を始めた位置に戻る／OFF：止めた位置のまま" aria-label="停止したら開始位置に戻る"><i data-icon="corner-up-left"></i></button>
         <button type="button" class="icon tb-more-btn" aria-expanded="false" title="クリック・BPM・速さ" aria-label="クリック・BPM・速さ"><i data-icon="ellipsis"></i></button>
         <span class="tb-sep" aria-hidden="true"></span>
-        <button id="pMic" class="icon mic" type="button" title="マイクを開始（判定を始める）" aria-label="マイクを開始" aria-pressed="false"><i data-icon="circle"></i></button>
+        <button id="pMic" class="icon mic" type="button" title="マイクを開始（判定を始める）" aria-label="マイクを開始" aria-pressed="false"><i data-icon="mic"></i></button>
         <div class="meter" aria-label="入力レベル"><i id="pMeter"></i></div>
       </div>
       <div class="ed-group tb-more" role="group" aria-label="テンポとクリック">
@@ -70,7 +70,6 @@
       <button id="pAgain" type="button" class="primary">もう一度</button>
     </div>
     <div id="pTab" class="tab-scroll"></div>
-    <p class="hint">マイクを開始して弾くと、正しく弾けた音から進みます。音をクリックするとそこから練習できます。クリック音はマイク中とお手本の再生中に鳴ります。</p>
   </main>
 
   <main id="view-songs" class="view" hidden>
@@ -151,7 +150,6 @@
     <dialog id="edTextDlg" class="ed-dlg">
       <form method="dialog">
         <h2>テキスト入力</h2>
-        <p class="hint">コードや音を文字で書いて「反映」を押すと、TAB譜に反映されます。</p>
         <textarea id="edTextArea" rows="6" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
         <p id="edTextErr" class="errors"></p>
         <details class="howto">
@@ -178,7 +176,6 @@
     <dialog id="edLeaveDlg" class="ed-dlg">
       <form method="dialog">
         <h2>保存していない変更があります</h2>
-        <p>練習に移る前に保存しますか？「保存せずに練習」を選ぶと、今の内容のまま練習できます（曲は保存されません）。</p>
         <div class="dlg-actions">
           <button value="cancel" type="submit">キャンセル</button>
           <button value="nosave" type="submit">保存せずに練習</button>
@@ -219,31 +216,24 @@
 
   <main id="view-analyze" class="view" hidden>
   <section class="panel controls" aria-label="入力と録音">
-    <button id="micBtn" class="icon mic-in" type="button" title="マイクを開始" aria-label="マイクを開始" aria-pressed="false"><i data-icon="circle"></i></button>
+    <button id="micBtn" class="icon mic-in" type="button" title="マイクを開始" aria-label="マイクを開始" aria-pressed="false"><i data-icon="mic"></i></button>
     <button id="recBtn" class="icon rec" type="button" title="録音（マイクを開始すると使えます）" aria-label="録音" aria-pressed="false" disabled><i data-icon="circle"></i></button>
     <button id="recListBtn" class="icon" type="button" title="録音したファイルの一覧" aria-label="録音したファイルの一覧"><i data-icon="list"></i><span id="recCount" class="badge" hidden>0</span></button>
     <span id="recTimer" class="timer" hidden>0:00.0</span>
-    <select id="sampleSel" aria-label="サンプルコード">
-      <option value="C">C</option><option value="G">G</option><option value="Am">Am</option>
-      <option value="Em">Em</option><option value="D">D</option><option value="E7">E7</option>
-      <option value="Am7">Am7</option><option value="Cmaj7">Cmaj7</option><option value="Dm">Dm</option>
-      <option value="F">F（バレー）</option><option value="E5">E5（パワーコード）</option><option value="A2">単音 A2</option>
-    </select>
-    <button id="sampleBtn" type="button">サンプルを鳴らす</button>
     <div class="meter" aria-label="入力レベル"><i id="meterBar"></i></div>
-    <p id="status" class="status">● でマイクを開始し、赤い ● で録音します。マイクが使えない環境ではサンプルで試せます。</p>
+    <p id="status" class="status" role="status"></p>
   </section>
 
   <div class="grid">
     <section class="panel" aria-live="polite">
       <h2>コード</h2>
       <div id="chord" class="chord stale">—</div>
-      <div id="chordSub" class="chord-sub">音を鳴らすとここに表示されます</div>
+      <div id="chordSub" class="chord-sub"></div>
       <div id="cands" class="cands"></div>
     </section>
     <section class="panel">
       <h2>構成音（低い順）</h2>
-      <div id="notes" class="notes"><span class="empty">検出された音名がここに並びます。枠付きはベース音です。</span></div>
+      <div id="notes" class="notes"></div>
       <div class="tuner">
         <div class="tuner-row"><span>最も強い音</span><span id="tunerText">—</span></div>
         <div class="scale"><div id="needle" class="needle"></div></div>
@@ -260,12 +250,11 @@
   <dialog id="recDlg" class="ed-dlg">
     <form method="dialog">
       <h2>録音したファイル</h2>
-      <div id="recs" class="recs"><span class="empty">マイクを開始してから赤い ● を押すと録音し、もう一度押すとここにWAVファイルとして保存されます。</span></div>
+      <div id="recs" class="recs"><span class="empty">録音はまだありません</span></div>
       <div class="dlg-actions"><button type="submit" class="primary">閉じる</button></div>
     </form>
   </dialog>
 
-  <footer>解析は16384点のFFTスペクトルを圧縮し、倍音を加算して音高候補を求め、見つけた音の倍音を差し引きながら複数の音を取り出しています。構成音のピッチクラスをコードの型と照合し、最も説明できる候補を表示します。録音はマイク入力をそのまま16bit PCMのWAVに書き出します。</footer>
   </main>
 </div>
 <script src="js/icons.js"></script>

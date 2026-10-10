@@ -54,7 +54,7 @@ async function startMic() {
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
   } catch (e) {
-    setStatus("マイクを使えませんでした（" + (e.name || "error") + "）。ブラウザのマイク許可を確認するか、サンプルで試してください。", true);
+    setStatus("マイクを使えませんでした（" + (e.name || "error") + "）。ブラウザのマイク許可を確認してください。", true);
     return;
   }
   stopPlayback();
@@ -66,7 +66,7 @@ async function startMic() {
   micSource.connect(tapNode); tapNode.connect(mute); mute.connect(ctx.destination);
   setPressed($("micBtn"), true, "マイクを停止");
   $("recBtn").disabled = false;
-  setStatus("マイク入力を解析中です（" + ctx.sampleRate + " Hz）。弦を鳴らしてください。");
+  setStatus("");
   startLoop();
 }
 
@@ -78,33 +78,10 @@ function stopMic() {
   micStream = micSource = tapNode = mute = null;
   setPressed($("micBtn"), false, "マイクを開始");
   $("recBtn").disabled = true;
-  setStatus("マイクを停止しました。");
+  setStatus("");
 }
 
 function stopPlayback() { if (playSource) { try { playSource.stop(); } catch (e) {} playSource.disconnect(); playSource = null; } }
-
-function playBuffer(audioBuf, label) {
-  ensureContext();
-  stopPlayback();
-  playSource = ctx.createBufferSource();
-  playSource.buffer = audioBuf;
-  playSource.connect(analyser);
-  analyser.connect(ctx.destination);
-  playSource.onended = () => { analyser.disconnect(); };
-  playSource.start();
-  tracker.reset();
-  setStatus(label + " を再生しながら解析しています。");
-  startLoop();
-}
-
-function playSample() {
-  ensureContext();
-  const key = $("sampleSel").value;
-  const data = synthStrum(SAMPLE_VOICINGS[key], ctx.sampleRate, 3);
-  const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
-  buf.copyToChannel(data, 0);
-  playBuffer(buf, "サンプル " + key);
-}
 
 function encodeWav(chunks, sr) {
   const len = chunks.reduce((a, c) => a + c.length, 0);
@@ -237,11 +214,10 @@ function startLoop() {
 
 $("micBtn").addEventListener("click", () => (micStream ? stopMic() : startMic()));
 $("recBtn").addEventListener("click", toggleRec);
-$("sampleBtn").addEventListener("click", playSample);
 $("recListBtn").addEventListener("click", () => $("recDlg").showModal());
 window.addEventListener("resize", () => drawChroma(shownChroma));
 drawChroma(shownChroma);
 
 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-  setStatus("このブラウザではマイクを使えません。サンプルで試してください。", true);
+  setStatus("このブラウザではマイクを使えません。", true);
 }

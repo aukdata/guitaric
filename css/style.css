@@ -316,3 +316,4 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .menu-item:hover, .menu-item:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: none; }
 .menu-item.danger { color: var(--bad); }
 .ed-toolbar svg.ic { width: 1.05em; height: 1.05em; }
+.status:empty { display: none; }
