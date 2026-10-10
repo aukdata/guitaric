@@ -3,9 +3,10 @@
 // The model playback schedules its own clicks, so the metronome pauses while it plays.
 const metro = { on: false, next: 0, n: 0, timer: 0, out: null };
 
+// the tempo ("@bpm") at the step being practiced, times the speed setting
 function practiceBpm() {
-  const v = +$("prBpm").value;
-  return v >= 30 && v <= 240 ? v : (practice.song && practice.song.bpm) || 80;
+  const st = practice.song && practice.song.steps[Math.min(practice.idx, practice.song.steps.length - 1)];
+  return (st && st.tempo) || (practice.song && practice.song.bpm) || 80;
 }
 const effectiveBpm = () => practiceBpm() * transport.rate;
 
@@ -42,9 +43,8 @@ function updateMetronome(restart) {
   if (want) startMetronome();
 }
 
-// called when a song is loaded: take its tempo
-function setMetroSong(song) {
-  $("prBpm").value = song.bpm || 80;
+// called when a song is loaded
+function setMetroSong() {
   updateMetronome(true);
 }
 

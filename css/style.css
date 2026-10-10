@@ -123,6 +123,10 @@ svg.tab { display: block; padding: 0; border-radius: 0; } /* not the mode-tab bu
 .tab-fret { font: 500 14px var(--f-mono); fill: var(--fg); text-anchor: middle; }
 .tab-chord { font: 700 14px var(--f-body); fill: var(--fg); text-anchor: middle; }
 .tab-tech { font: italic 600 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
+.tab-volta { stroke: var(--fg); stroke-width: 1.2; }
+.tab-repeat { fill: var(--fg); }
+.tab-repeatline { stroke: var(--fg); stroke-width: 1.2; }
+.tab-times { text-anchor: end; }
 .tab-pm { font: italic 600 11px var(--f-body); fill: var(--muted); }
 .tab-pmline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 .tab-capo { font: 600 11px var(--f-body); fill: var(--muted); }
@@ -343,6 +347,8 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .pop-row .pop-loose + .pop-loose { margin-left: 0; }
 .pop-row input#popChord { width: 6em; }
 .pop-len { flex-wrap: nowrap; }
+.pop-bpm input { width: 4.2em; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; }
+.pop-flow .seg button { font-weight: 700; min-width: 2.4em; }
 .len-slider { flex: 1; min-width: 0; display: grid; }
 .len-ticks { position: relative; height: 1.2em; margin: 0 8px; font-size: .66rem; color: var(--muted); }
 .len-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
@@ -361,3 +367,5 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .pop-row.actions { border-top: 1px solid var(--line); padding-top: 8px; }
 .pop-row.actions button { padding: 5px 10px; font-size: .85rem; }
 .pop-row.actions .danger { margin-left: auto; color: var(--bad); }
+.ed-pop > * { min-width: 0; }
+#popTech { width: 6.6em; }

@@ -1,12 +1,13 @@
 /* ===== export / import songs as files (曲を作る) ===== */
-// File format: { "app": "guitaric", "version": 1, "songs": [{ "title", "bpm", "text", "grid"? }] }
+// File format: { "app": "guitaric", "version": 1, "songs": [{ "title", "text", "grid"? }] } (the tempo is "@bpm" in the text;
+// files from before that carry "bpm", which import puts into the text)
 // Import also takes a bare song or an array of songs, and a plain .txt file of song text.
 
 const fileSafe = name => name.replace(/[\\/:*?"<>|]+/g, "_").trim() || "guitaric";
 
 function exportSongs(songs, name) {
   const data = { app: "guitaric", version: 1,
-    songs: songs.map(s => ({ title: s.title, bpm: s.bpm || 80, text: s.text, ...(s.grid && s.grid !== 8 ? { grid: s.grid } : {}) })) };
+    songs: songs.map(s => ({ title: s.title, text: textWithBpm(s), ...(s.grid && s.grid !== 8 ? { grid: s.grid } : {}) })) };
   const blob = new Blob([JSON.stringify(data, null, 2) + "\n"], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -22,13 +23,12 @@ function songsFromFile(name, content) {
     // not JSON: the whole file is song text, titled after the file
     const text = content.trim();
     if (!text) throw new Error("空のファイルです");
-    return [{ title: name.replace(/(\.guitaric)?\.(txt|json)$/i, ""), bpm: 80, text }];
+    return [{ title: name.replace(/(\.guitaric)?\.(txt|json)$/i, ""), text }];
   }
   const list = Array.isArray(data) ? data : Array.isArray(data.songs) ? data.songs : [data];
   const songs = list.filter(s => s && typeof s.text === "string" && s.text.trim()).map(s => ({
     title: String(s.title || "無題の曲").slice(0, 100),
-    bpm: Math.max(30, Math.min(240, +s.bpm || 80)),
-    text: s.text.slice(0, 20000),
+    text: textWithBpm({ bpm: +s.bpm >= 30 && +s.bpm <= 240 ? +s.bpm : 0, text: s.text.slice(0, 20000) }),
     ...([4, 16].includes(+s.grid) ? { grid: +s.grid } : {})
   }));
   if (!songs.length) throw new Error("曲が見つかりません");

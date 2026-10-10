@@ -1,9 +1,11 @@
 /* ===== songs: chord dictionary, text parser, presets, storage ===== */
 // Strings are numbered like TAB: 1 = high E ... 6 = low E.
 const OPEN_MIDI = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
-// sounding pitches: a bent note at the pitch it is bent up to; a capo raises every string
-// (buildSong puts the song's capo on each step)
-const stepMidis = step => step.notes.map(([s, f]) => OPEN_MIDI[s] + (step.capo || 0) + f + (step.tech === "b" ? step.bend : 0));
+// natural harmonics: fret -> semitones above the open string (the overtone that fret's node gives)
+const HARMONICS = { 12: 12, 7: 19, 19: 19, 5: 24, 24: 24, 4: 28, 9: 28, 16: 28, 3: 31 };
+// sounding pitches: a bent note at the pitch it is bent up to; a harmonic at its overtone;
+// a capo raises every string (buildSong puts the song's capo on each step)
+const stepMidis = step => step.notes.map(([s, f]) => OPEN_MIDI[s] + (step.capo || 0) + (step.harm ? HARMONICS[f] || f : f) + (step.tech === "b" ? step.bend : 0));
 // steps that are played (a brushing stroke has no pitch but is played)
 const isPlayed = st => st.notes.length > 0 || !!st.brush;
 
@@ -30,15 +32,26 @@ const BARRE_SHAPES = {
 const FLAT_TO_SHARP = { Db: "C#", Eb: "D#", Gb: "F#", Ab: "G#", Bb: "A#", Cb: "B", Fb: "E" };
 const CHORD_RE = /^([A-G])([#b]?)(maj7|m7-5|m7b5|7sus4|sus4|sus2|add9|dim7|dim|aug|maj|m6|m7|m|7|6|5)?$/;
 
+// "C/G": a chord over another bass note (bass = its pitch class)
 function parseChordName(name) {
-  const m = CHORD_RE.exec(name);
+  const [top, bassName, more] = String(name).split("/");
+  if (more != null) return null;
+  let bass = null;
+  if (bassName != null) {
+    const b = /^([A-G])([#b]?)$/.exec(bassName);
+    if (!b) return null;
+    const bn = FLAT_TO_SHARP[b[1] + b[2]] || b[1] + b[2];
+    bass = NOTE_NAMES.indexOf(bn);
+    if (bass < 0) return null;
+  }
+  const m = CHORD_RE.exec(top);
   if (!m) return null;
   let root = m[1] + m[2];
   if (FLAT_TO_SHARP[root]) root = FLAT_TO_SHARP[root];
   let q = m[3] || "";
   if (q === "maj") q = ""; if (q === "m7b5") q = "m7-5";
   const pc = NOTE_NAMES.indexOf(root);
-  return pc < 0 ? null : { root, pc, q };
+  return pc < 0 ? null : { root, pc, q, bass };
 }
 
 function shapeToNotes(frets) {
@@ -51,6 +64,7 @@ function shapeToNotes(frets) {
 function chordVoicing(name) {
   const c = parseChordName(name);
   if (!c) return null;
+  if (c.bass != null) return withBass(chordVoicing(name.split("/")[0]), c.bass);
   const listed = CHORD_SHAPES[c.root + c.q];
   if (listed) return shapeToNotes([...listed].map(ch => (ch === "x" ? null : parseInt(ch, 36))));
   let best = null;
@@ -64,12 +78,31 @@ function chordVoicing(name) {
   return best ? shapeToNotes(best.frets) : null;
 }
 
-// The pitch classes a chord name asks for (used by the judge).
+// A slash chord's shape: the chord with the bass note put on the lowest string that keeps the
+// hand where it is (C/G -> 332010, G/B -> x20003, F/C -> x33211); the strings below it are not played.
+function withBass(notes, bass) {
+  if (!notes) return null;
+  const low = notes.reduce((a, n) => (n[0] > a[0] ? n : a));
+  if ((OPEN_MIDI[low[0]] + low[1]) % 12 === bass) return notes;
+  const fretted = notes.map(n => n[1]).filter(f => f > 0);
+  const lo = fretted.length ? Math.min(...fretted) : 0, hi = fretted.length ? Math.max(...fretted) : 0;
+  for (const s of [6, 5, 4]) {
+    for (const base of [0, 12]) {
+      const f = ((bass - OPEN_MIDI[s]) % 12 + 12) % 12 + base;
+      if (f === 0 || (f >= hi - 3 && f <= lo + 3)) return [[s, f], ...notes.filter(n => n[0] < s)];
+    }
+  }
+  return null;
+}
+
+// The pitch classes a chord name asks for (used by the judge); a slash chord adds its bass.
 function chordPitchClasses(name) {
   const c = parseChordName(name);
   if (!c) return null;
   const t = CHORD_TYPES.find(([q]) => q === c.q);
-  return t ? t[1].map(i => (c.pc + i) % 12) : null;
+  if (!t) return null;
+  const pcs = t[1].map(i => (c.pc + i) % 12);
+  return c.bass != null && !pcs.includes(c.bass) ? [...pcs, c.bass] : pcs;
 }
 
 /* Text format (spaces between items, "|" between bars):
@@ -85,6 +118,12 @@ function chordPitchClasses(name) {
  *   C?  6-3?            judged loosely: any strum / note passes
  *   4-7h  4-5p  5-5s    hammer-on / pull-off / slide into this note (shown on the TAB; the pitch is judged as usual)
  *   3-7b  3-7b1  3-7d   bend up a whole / half step (judged at the bent pitch) / release a pre-bent note (3-7d1 / 3-7d2: half / whole)
+ *   3-7v                vibrato
+ *   3-<12>  4-<7>+3-<7> natural harmonics (frets 3 4 5 7 9 12 16 19 24)
+ *   C/G                 slash chord (C over a G bass)
+ *   @bpm120             tempo from the next note on (anywhere: a tempo change mid-song)
+ *   @[ ... @]  @]3      repeat the part between (twice / 3 times); "@]" alone repeats from the top
+ *   @[ A @1 B @] C      "@1": first ending, skipped on the last time through (A B A C)
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  *   @16 ...             at the very start: use a 16th-note grid (@32: 32nd notes)
  *   @capo3 ...          at the very start: capo on the 3rd fret (frets are counted from the capo)
@@ -95,33 +134,56 @@ function parseSongText(text, opts = {}) {
   const usesBars = text.includes("|");
   const bars = text.split("|").map(b => b.trim()).filter(Boolean);
   const steps = [], errors = [];
+  // directives waiting for the next note: tempo, repeat start; volta: inside a first ending
+  let pending = {}, volta = false;
   for (const bar of (usesBars ? bars : [text])) {
     const items = [];
+    const push = item => {
+      if (volta) item.volta = true;
+      items.push(Object.assign(item, pending)); pending = {};
+    };
     for (const tok of bar.split(/\s+/).filter(Boolean)) {
+      if (tok[0] === "@") {
+        let m;
+        if ((m = /^@bpm(\d+)$/i.exec(tok)) && +m[1] >= 20 && +m[1] <= 300) pending.bpm = +m[1];
+        else if (tok === "@[") pending.repStart = true;
+        else if (tok === "@1") volta = true;
+        else if ((m = /^@\](\d*)$/.exec(tok)) && (!m[1] || (+m[1] >= 2 && +m[1] <= 9))) {
+          const last = items[items.length - 1] || (!items.length && steps[steps.length - 1]);
+          if (last) last.repEnd = m[1] ? +m[1] : 2;
+          else errors.push(`「${tok}」の前に音がありません`);
+          volta = false;
+        } else errors.push(`「${tok}」は読めません（@bpm120 / @[ / @] / @]3 / @1）`);
+        continue;
+      }
       // a trailing "?" marks a step judged loosely (any strum or note passes)
       const loose = /\?(:|$)/.test(tok.replace("_", ""));
       const pm = /_(\?)?(:|$)/.test(tok);
       let [body, lenStr] = tok.replace("?", "").replace(/_(?=\??(:|$))/, "").split(":");
       const len = lenStr ? parseInt(lenStr, 10) : null;
       if (lenStr && !(len > 0)) { errors.push(`「${tok}」の長さが読めません`); continue; }
-      if (/^[rR]$/.test(body)) { items.push({ notes: [], len: len || 1 }); continue; }
-      if (/^[xX]$/.test(body)) { items.push({ notes: [], brush: true, len: len || 1 }); continue; }
+      if (/^[rR]$/.test(body)) { push({ notes: [], len: len || 1 }); continue; }
+      if (/^[xX]$/.test(body)) { push({ notes: [], brush: true, len: len || 1 }); continue; }
       // "~" holds the previous note on (a tie): nothing new to play, so wait mode skips it like a rest
-      if (body === "~") { items.push({ notes: [], tie: true, len: len || 1 }); continue; }
+      if (body === "~") { push({ notes: [], tie: true, len: len || 1 }); continue; }
       const extra = { ...(loose ? { loose: true } : {}), ...(pm ? { pm: true } : {}) };
-      // a technique letter after a single note: h p s (display only), b / b1 bend, d release
-      const tech = /^\d-\d+(h|p|s|b[12]?|d[12]?)$/.exec(body);
+      // a technique letter after a single note: h p s (display only), b / b1 bend, d release, v vibrato
+      const tech = /^\d-<?\d+>?(h|p|s|v|b[12]?|d[12]?)$/.exec(body);
       if (tech) {
         body = body.slice(0, -tech[1].length);
         extra.tech = tech[1][0];
         if (extra.tech === "b") extra.bend = tech[1][1] === "1" ? 1 : 2;
         else if (extra.tech === "d" && tech[1][1]) extra.bend = +tech[1][1];
       }
+      // "3-<12>": natural harmonics (every note of the step)
+      const harm = /^\d-<\d+>(\+\d-<\d+>)*$/.test(body);
+      if (harm) { body = body.replace(/[<>]/g, ""); extra.harm = true; }
       if (/^\d-\d+(\+\d-\d+)*$/.test(body)) {
         const notes = body.split("+").map(p => p.split("-").map(Number));
         const bad = notes.find(([s, f]) => s < 1 || s > 6 || f > 24);
         if (bad) { errors.push(`「${tok}」は弦1〜6・フレット0〜24で書いてください`); continue; }
-        items.push({ notes: notes.sort((a, b) => b[0] - a[0]), len: len || 1, ...extra });
+        if (harm && notes.some(([, f]) => !HARMONICS[f])) { errors.push(`「${tok}」：ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです`); continue; }
+        push({ notes: notes.sort((a, b) => b[0] - a[0]), len: len || 1, ...extra });
         continue;
       }
       // "C*4": the chord strummed 4 times, splitting its length
@@ -130,26 +192,68 @@ function parseSongText(text, opts = {}) {
       if (!(times >= 1 && times <= 16)) { errors.push(`「${tok}」の回数が読めません`); continue; }
       const notes = chordVoicing(name);
       if (!notes) { errors.push(`「${tok}」はコード名としても音（弦-フレット）としても読めません`); continue; }
-      for (let k = 0; k < times; k++) items.push({ notes, chord: name, len: len ? Math.max(1, Math.round(len / times)) : null, split: times, ...extra });
+      for (let k = 0; k < times; k++) push({ notes, chord: name, len: len ? Math.max(1, Math.round(len / times)) : null, split: times, ...extra });
     }
     // chords without an explicit length fill the bar (or a whole bar each when no bars are written)
     const open = items.filter(i => i.len == null);
     const used = items.reduce((a, i) => a + (i.len || 0), 0);
     const share = usesBars ? Math.max(1, Math.floor((barCells - used) / (open.length || 1))) : barCells;
-    for (const { split, ...i } of items) steps.push({ ...i, len: i.len ?? (usesBars ? share : Math.max(1, Math.round(barCells / (split || 1)))) });
+    for (const { split, ...i } of items) steps.push(Object.assign(i, { len: i.len ?? (usesBars ? share : Math.max(1, Math.round(barCells / (split || 1)))) }));
   }
+  if (pending.repStart) errors.push("「@[」の後に音がありません");
   return { steps, errors };
 }
 
+// The order steps are played in, repeats unrolled. A repeat runs from its "@[" (or the end of the
+// previous repeat, or the top) to its "@]"; a first ending ("@1") is skipped on the last time through.
+function playOrder(steps, errors) {
+  const blocks = [];
+  let open = -1, after = 0;
+  steps.forEach((st, i) => {
+    if (st.repStart) { if (open >= 0) errors.push(`${i + 1}番目の音：繰り返しの中に「@[」があります`); open = i; }
+    if (st.repEnd) { blocks.push({ start: open >= 0 ? open : after, end: i, count: st.repEnd }); open = -1; after = i + 1; }
+  });
+  const order = [];
+  let block = null;
+  for (let i = 0; i < steps.length; i++) {
+    if (!block || block.start !== i || block.pass === 1) {
+      const b = blocks.find(x => x.start === i);
+      if (b && b !== block) block = { ...b, pass: 1 };
+    }
+    const inBlock = block && i >= block.start && i <= block.end;
+    if (!(inBlock && steps[i].volta && block.pass === block.count)) order.push(i);
+    if (inBlock && i === block.end) {
+      if (block.pass < block.count) { block.pass++; i = block.start - 1; continue; }
+      block = null;
+    }
+    if (order.length > 5000) break;
+  }
+  return order;
+}
+
+// The song as played: repeats written out, each step knowing which written step it is (src)
+function expandSong(song) {
+  return { ...song, steps: song.order.map(i => ({ ...song.steps[i], src: i })), order: song.order.map((_, k) => k) };
+}
+
+// older songs kept the tempo apart from the text ({ bpm: 80 }); now it is "@bpm80" in the text
+function textWithBpm(s) {
+  const text = s.text || "";
+  // (only when no "@bpm" comes before the first note)
+  if (!s.bpm || /@bpm\d/i.test(/^(\s*(\||@\S+))*/.exec(text)[0])) return text;
+  const lead = /^(\s*@(4|8|16|32|capo\d{1,2})(?=\s|\||$)\s*)*/.exec(text)[0];
+  return lead + `@bpm${s.bpm} ` + text.slice(lead.length);
+}
+
 const PRESET_SONGS = [
-  { id: "preset-oudou", title: "王道進行", bpm: 80, text: "F G Em Am" },
-  { id: "preset-canon", title: "カノン進行", bpm: 80, text: "C G Am Em F C F G" },
-  { id: "preset-canon4", title: "カノン進行（1小節4回）", bpm: 75, text: "C*4 G*4 Am*4 Em*4 F*4 C*4 F*4 G*4" },
-  { id: "preset-minor", title: "マイナー進行", bpm: 80, text: "Am Dm E Am" },
-  { id: "preset-change", title: "持ち替え練習 C⇔G", bpm: 70, text: "| C G | C G | Am F | C G |" },
-  { id: "preset-scale", title: "Cメジャースケール", bpm: 70, text: "5-3 4-0 4-2 4-3 3-0 3-2 2-0 2-1 2-0 3-2 3-0 4-3 4-2 4-0 5-3:2" },
-  { id: "preset-penta", title: "Aマイナーペンタのリフ", bpm: 80, text: "6-5 6-8 5-5 5-7 4-5 4-7 5-7 5-5 6-8 6-5:2 r 6-5+5-7:4" },
-  { id: "preset-penta-solo", title: "Aマイナーペンタのソロ（16分）", bpm: 60, grid: 16, text: "| r:10 3-5+4-5:1 4-7h:1 4-5:1 5-7:1 5-5s:2 | 5-3:4 5-7s:1 4-5:1 4-5:1 5-7:1 4-5:4 r:1 4-5:1 4-7:1 3-5:1 | 3-7b:6 3-7d:2 3-5:8 | r:2 3-9s:1 1-8:1 3-9:1 3-7s:1 3-5:1 3-7:1 3-7b:2 1-5:2 3-7d:2 3-5:2 | 4-7:1 4-5:1 4-7:1 4-5:1 5-7:1 5-5s:1 5-3:1 5-5:1 5-3:4 r:1 4-5:1 4-7:1 3-5:1 | 3-5:2 4-7:1 3-5:1 3-7:1 3-9s:1 2-8:2 3-9s:2 2-8:3 3-9s:1 2-8:2 | 2-10:4 r:1 2-8:1 2-10:1 1-8:1 1-10b:4 1-10d:2 1-8:1 1-10:1 | 1-8:8 1-15b:4 r:3 2-15b:1 | 2-15d:1 2-13:1 2-15:1 r:1 2-15b:2 2-13:1 2-15:1 2-13:8 |" }
+  { id: "preset-oudou", title: "王道進行", text: "@bpm80 F G Em Am" },
+  { id: "preset-canon", title: "カノン進行", text: "@bpm80 C G Am Em F C F G" },
+  { id: "preset-canon4", title: "カノン進行（1小節4回）", text: "@bpm75 C*4 G*4 Am*4 Em*4 F*4 C*4 F*4 G*4" },
+  { id: "preset-minor", title: "マイナー進行", text: "@bpm80 Am Dm E Am" },
+  { id: "preset-change", title: "持ち替え練習 C⇔G", text: "@bpm70 | C G | C G | Am F | C G |" },
+  { id: "preset-scale", title: "Cメジャースケール", text: "@bpm70 5-3 4-0 4-2 4-3 3-0 3-2 2-0 2-1 2-0 3-2 3-0 4-3 4-2 4-0 5-3:2" },
+  { id: "preset-penta", title: "Aマイナーペンタのリフ", text: "@bpm80 6-5 6-8 5-5 5-7 4-5 4-7 5-7 5-5 6-8 6-5:2 r 6-5+5-7:4" },
+  { id: "preset-penta-solo", title: "Aマイナーペンタのソロ（16分）", grid: 16, text: "@bpm60 | r:10 3-5+4-5:1 4-7h:1 4-5:1 5-7:1 5-5s:2 | 5-3:4 5-7s:1 4-5:1 4-5:1 5-7:1 4-5:4 r:1 4-5:1 4-7:1 3-5:1 | 3-7b:6 3-7d:2 3-5:8 | r:2 3-9s:1 1-8:1 3-9:1 3-7s:1 3-5:1 3-7:1 3-7b:2 1-5:2 3-7d:2 3-5:2 | 4-7:1 4-5:1 4-7:1 4-5:1 5-7:1 5-5s:1 5-3:1 5-5:1 5-3:4 r:1 4-5:1 4-7:1 3-5:1 | 3-5:2 4-7:1 3-5:1 3-7:1 3-9s:1 2-8:2 3-9s:2 2-8:3 3-9s:1 2-8:2 | 2-10:4 r:1 2-8:1 2-10:1 1-8:1 1-10b:4 1-10d:2 1-8:1 1-10:1 | 1-8:8 1-15b:4 r:3 2-15b:1 | 2-15d:1 2-13:1 2-15:1 r:1 2-15b:2 2-13:1 2-15:1 2-13:8 |" }
 ];
 
 const SONG_KEY = "guitaric.songs";
@@ -168,6 +272,9 @@ function buildSong(s) {
     text = text.slice(m[0].length);
   }
   const timeSig = s.timeSig || [4, 4], parsed = parseSongText(text, { timeSig, grid });
-  if (capo) parsed.steps.forEach(st => { st.capo = capo; });
-  return { ...s, timeSig, grid, capo, ...parsed };
+  // the tempo in force at each step ("@bpm" changes it from that step on; older songs: s.bpm)
+  let tempo = s.bpm || 80;
+  parsed.steps.forEach(st => { if (capo) st.capo = capo; if (st.bpm) tempo = st.bpm; st.tempo = tempo; });
+  const order = playOrder(parsed.steps, parsed.errors);
+  return { ...s, timeSig, grid, capo, bpm: parsed.steps.length ? parsed.steps[0].tempo : tempo, order, ...parsed };
 }

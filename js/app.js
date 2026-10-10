@@ -24,7 +24,7 @@ function showView(name) {
   try { localStorage.setItem("guitaric.view", name); } catch (e) {}
   // canvases measure 0 while hidden; redraw once visible
   if (name === "analyze") drawChroma(shownChroma);
-  if (name === "practice" && practice.tab) practice.tab.scrollTo(practice.idx);
+  if (name === "practice" && practice.tab) practice.tab.scrollTo(practiceSrc());
   updateMetronome();
 }
 

@@ -1,27 +1,32 @@
 /* ===== playback of a song with the synthesized guitar (practice model and editor) ===== */
-// Schedules steps from..end of the song into `out`. onStep(i) fires as each step starts.
+// seconds per grid cell at a step's tempo ("@bpm"), times the playback speed
+const cellSecs = (song, st, rate) => 60 / ((st.tempo || song.bpm || 80) * rate) * 4 / song.grid;
+
+// Schedules the song from step `from` to the end into `out`, in playing order (repeats unrolled; a
+// step inside a repeat starts from its first time through). onStep(i) fires as each step starts.
 // Returns { sources, timers, start, end } (audio times of the first step and of the end of the last step's length).
-function scheduleSong(song, from, bpm, out, onStep) {
-  const steps = song.steps, cell = 60 / bpm * 4 / song.grid;
+function scheduleSong(song, from, rate, out, onStep) {
+  const steps = song.steps, order = song.order || steps.map((_, i) => i);
   const sources = [], timers = [];
   let t = ctx.currentTime + 0.15;
   const start = t;
-  for (let i = from; i < steps.length; i++) {
-    const st = steps[i], dur = st.len * cell, start = t;
+  for (let p = Math.max(0, order.indexOf(from)); p < order.length; p++) {
+    const i = order[p], st = steps[i], cell = cellSecs(song, st, rate), dur = st.len * cell, start = t;
     timers.push(setTimeout(() => onStep(i), (start - ctx.currentTime) * 1000));
     t += dur;
     if (st.brush) { sources.push(brushSound(start, out)); continue; }
     if (!st.notes.length) continue;
     // a note rings until the next one starts (the last one rings on); ties after this step keep it ringing
-    let held = dur, k = i + 1;
-    while (steps[k] && steps[k].tie) held += steps[k++].len * cell;
-    let ring = k >= steps.length ? held + 1.6 : held + 0.05;
+    let held = dur, k = p + 1;
+    while (k < order.length && steps[order[k]].tie) held += steps[order[k]].len * cellSecs(song, steps[order[k++]], rate);
+    let ring = k >= order.length ? held + 1.6 : held + 0.05;
     if (st.pm) ring = Math.min(ring, 0.22); // bridge mute: stopped short by the palm
+    if (st.harm) ring = Math.max(ring, Math.min(held + 1.2, 2.5)); // a harmonic keeps ringing
     const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + (st.tech === "s" ? 0.3 : 0.05), i + 1);
     const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
     const src = ctx.createBufferSource(); src.buffer = b;
     // a slide glides from the previous note on the same string up or down into this one
-    const prev = steps[i - 1];
+    const prev = steps[order[p - 1]];
     if (st.tech === "s" && prev && prev.notes.length === 1 && prev.notes[0][0] === st.notes[0][0] && prev.notes[0][1] !== st.notes[0][1]) {
       const glide = Math.min(0.15, dur * 0.5);
       src.playbackRate.setValueAtTime(2 ** ((prev.notes[0][1] - st.notes[0][1]) / 12), start);
@@ -36,10 +41,25 @@ function scheduleSong(song, from, bpm, out, onStep) {
       src.playbackRate.setValueAtTime(up, start);
       src.playbackRate.setValueAtTime(up, start + Math.min(0.08, dur * 0.3));
       src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.25, dur * 0.8));
+    } else if (st.tech === "v") {
+      // vibrato: the pitch wavers about ±25 cents, 5.5 times a second, after the attack
+      const lfo = ctx.createOscillator(), depth = ctx.createGain();
+      lfo.frequency.value = 5.5;
+      depth.gain.setValueAtTime(0, start);
+      depth.gain.linearRampToValueAtTime(0.015, start + Math.min(0.25, dur * 0.4));
+      lfo.connect(depth); depth.connect(src.playbackRate);
+      lfo.start(start); lfo.stop(start + ring + 0.05);
+      sources.push(lfo);
     }
     const g = ctx.createGain();
     const vol = st.tech === "h" || st.tech === "p" || st.tech === "s" ? 1.6 : 2.5; // not picked: softer
-    if (st.pm) {
+    if (st.harm) {
+      // a harmonic: a pure, bell-like tone (the overtone alone, no low partials or pick noise)
+      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = midiToFreq(Math.max(...stepMidis(st))) * 1.6;
+      g.gain.setValueAtTime(vol * 1.3, start);
+      g.gain.exponentialRampToValueAtTime(vol * 0.3, start + ring - 0.04);
+      src.connect(lp); lp.connect(g);
+    } else if (st.pm) {
       // the palm on the bridge dulls the sound and makes it die away fast
       const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900;
       g.gain.setValueAtTime(vol * 1.4, start);
@@ -70,13 +90,13 @@ function brushSound(t, out) {
 
 // one step on its own (the editor window's ▶, a double tap in practice); a new one cuts the last off
 let preview = null;
-function previewStep(song, i, bpm) {
+function previewStep(song, i, rate) {
   const st = song.steps[i];
   if (!st || !isPlayed(st)) return;
   ensureContext();
   if (preview) { preview.sources.forEach(src => { try { src.stop(); } catch (e) {} }); preview.gain.disconnect(); }
   const gain = ctx.createGain(); gain.gain.value = transportGain(); gain.connect(ctx.destination);
-  const r = scheduleSong({ ...song, steps: [st] }, 0, bpm, gain, () => {});
+  const r = scheduleSong({ ...song, steps: [st], order: [0] }, 0, rate, gain, () => {});
   preview = { sources: r.sources, gain };
   return r.end + 1.6; // when it has rung out
 }
@@ -132,13 +152,18 @@ function clickTone(t, kind, out) {
   osc.start(t); osc.stop(t + len + 0.01);
 }
 
-// clicks on every quarter or eighth note of the song from step `from` on (bar heads accented)
-function scheduleSongClicks(song, from, bpm, start, out) {
+// clicks on every quarter or eighth note of the song from step `from` on (bar heads accented),
+// following the playing order and each step's tempo
+function scheduleSongClicks(song, from, rate, start, out) {
   const div = transport.click;
   if (!div) return;
-  const cell = 60 / bpm * 4 / song.grid, every = Math.max(1, song.grid / div), barCells = song.timeSig[0] * song.grid / 4;
-  const cells = song.steps.map(st => st.len), fromCell = cells.slice(0, from).reduce((a, b) => a + b, 0);
-  const total = cells.reduce((a, b) => a + b, 0);
-  for (let c = Math.ceil(fromCell / every) * every; c < total; c += every)
-    clickTone(start + (c - fromCell) * cell, c % barCells === 0 ? 2 : c % (song.grid / 4) === 0 ? 1 : 0, out);
+  const every = Math.max(1, song.grid / div), barCells = song.timeSig[0] * song.grid / 4;
+  const order = song.order || song.steps.map((_, i) => i), p0 = Math.max(0, order.indexOf(from));
+  let c = order.slice(0, p0).reduce((a, i) => a + song.steps[i].len, 0), t = start;
+  for (let p = p0; p < order.length; p++) {
+    const st = song.steps[order[p]], cell = cellSecs(song, st, rate);
+    for (let k = 0; k < st.len; k++, c++)
+      if (c % every === 0) clickTone(t + k * cell, c % barCells === 0 ? 2 : c % (song.grid / 4) === 0 ? 1 : 0, out);
+    t += st.len * cell;
+  }
 }

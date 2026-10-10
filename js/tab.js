@@ -28,6 +28,12 @@ function renderTab(container, song, opts = {}) {
   // start of each step in cells, for beaming within a beat
   const starts = [];
   song.steps.reduce((a, st, i) => { starts[i] = a; return a + st.len; }, 0);
+  // first / second endings: "1." over the first ending, "2." over the bar after its repeat
+  const volta = song.steps.map(st => (st.volta ? 1 : 0));
+  song.steps.forEach((st, i) => {
+    if (!st.repEnd || !st.volta) return;
+    for (let k = i + 1; k < song.steps.length; k++) { volta[k] = 2; if (endsBar[k]) break; }
+  });
   const staffBottom = TAB.top + TAB.row * 5, stemEnd = staffBottom + 30;
   const left = TAB.pad + 18, height = stemEnd + 12;
   const states = [], at = []; // at[i] = { row, x, w }
@@ -71,7 +77,10 @@ function renderTab(container, song, opts = {}) {
         const t = mk("text", { x: TAB.pad, y: y + 4, class: "tab-label" }, svg); t.textContent = STRING_LABELS[s];
       }
       for (const bx of [left, ...r.barEnds]) mk("line", { x1: bx, x2: bx, y1: TAB.top, y2: TAB.top + TAB.row * 5, class: "tab-bar" }, lines);
-      if (ri === 0 && song.capo) { const t = mk("text", { x: 4, y: 9, class: "tab-capo" }, svg); t.textContent = `Capo ${song.capo}`; }
+      if (ri === 0) {
+        const x = tempoMark(svg, 4, 10, song.bpm || 80);
+        if (song.capo) { const t = mk("text", { x: x + 10, y: 10, class: "tab-capo" }, svg); t.textContent = `Capo ${song.capo}`; }
+      }
       for (const i of r.steps) groups[i] = drawStep(svg, i);
       drawRhythm(svg, r.steps);
       rowEls.push(svg); frag.appendChild(svg);
@@ -87,8 +96,23 @@ function renderTab(container, song, opts = {}) {
     const { x: sx, w } = at[i];
     mk("rect", { x: sx + 2, y: 4, width: w - 4, height: height - 8, rx: 6, class: "tab-hl" }, g);
     const cx = sx + Math.min(w, TAB.minStep) / 2;
+    // a tempo change ("@bpm") from this step on
+    if (i > 0 && st.bpm && st.tempo !== song.steps[i - 1].tempo) tempoMark(g, sx + (volta[i] && volta[i - 1] !== volta[i] ? 20 : 4), volta[i] ? 14 : 10, st.bpm);
+    drawRepeat(g, st, sx, w);
+    if (volta[i]) {
+      // the ending's bracket over the top; it opens where the ending (or a new row) starts
+      const prevSame = i > 0 && volta[i - 1] === volta[i] && at[i - 1].row === at[i].row;
+      mk("line", { x1: sx + (prevSame ? 0 : 2), x2: sx + w, y1: 2, y2: 2, class: "tab-volta" }, g);
+      if (!prevSame) {
+        mk("line", { x1: sx + 2, x2: sx + 2, y1: 2, y2: 14, class: "tab-volta" }, g);
+        const t = mk("text", { x: sx + 6, y: 14, class: "tab-capo" }, g); t.textContent = volta[i] + ".";
+      }
+    }
     if (st.chord) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-chord" }, g); t.textContent = st.chord; }
-    else if (st.tech) {
+    else if (st.tech === "v") {
+      // vibrato: a wavy line over the note
+      mk("path", { d: `M${cx - 8} ${TAB.top - 14} q2 -4 4 0 t4 0 t4 0 t4 0`, class: "tab-slur" }, g);
+    } else if (st.tech) {
       const label = { h: "H", p: "P", s: "sl." }[st.tech];
       if (label) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-tech" }, g); t.textContent = label; }
       // a slur (H/P) or a slant line (slide) from the previous note on the same string
@@ -118,7 +142,7 @@ function renderTab(container, song, opts = {}) {
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-x" }, g); t.textContent = "×";
     }
     for (const [s, f] of st.notes) {
-      const y = TAB.top + (s - 1) * TAB.row, label = String(f);
+      const y = TAB.top + (s - 1) * TAB.row, label = st.harm ? `<${f}>` : String(f);
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret" }, g); t.textContent = label;
     }
@@ -134,6 +158,30 @@ function renderTab(container, song, opts = {}) {
     } else if (!st.notes.length && !st.brush) drawRests(g, st.len, sx, w);
     if (opts.onStepClick) g.addEventListener("click", () => opts.onStepClick(i));
     return g;
+  }
+
+  // a tempo mark "♩ = 120" (the note drawn, not a font glyph); returns where it ends
+  function tempoMark(parent, x, y, bpm) {
+    mk("ellipse", { cx: x + 3, cy: y - 2.5, rx: 3.2, ry: 2.3, transform: `rotate(-20 ${x + 3} ${y - 2.5})`, class: "tab-repeat" }, parent);
+    mk("line", { x1: x + 5.9, x2: x + 5.9, y1: y - 3, y2: y - 12, class: "tab-repeatline" }, parent);
+    const t = mk("text", { x: x + 10, y, class: "tab-capo" }, parent); t.textContent = `= ${bpm}`;
+    return x + 10 + 7 * String(bpm).length + 10;
+  }
+
+  // repeat signs: a thick and a thin bar line with two dots facing the repeated part; "×3" over an end
+  // played more than twice
+  function drawRepeat(g, st, sx, w) {
+    const ys = [TAB.top + TAB.row * 1.5, TAB.top + TAB.row * 3.5];
+    const sign = (x, dir) => {
+      mk("rect", { x: dir > 0 ? x : x - 3, y: TAB.top, width: 3, height: TAB.row * 5, class: "tab-repeat" }, g);
+      mk("line", { x1: x + dir * 6, x2: x + dir * 6, y1: TAB.top, y2: TAB.top + TAB.row * 5, class: "tab-repeatline" }, g);
+      for (const y of ys) mk("circle", { cx: x + dir * 10.5, cy: y, r: 2.2, class: "tab-repeat" }, g);
+    };
+    if (st.repStart) sign(sx, 1);
+    if (st.repEnd) {
+      sign(sx + w, -1);
+      if (st.repEnd > 2) { const t = mk("text", { x: sx + w - 2, y: TAB.top - 4, class: "tab-capo tab-times" }, g); t.textContent = `×${st.repEnd}`; }
+    }
   }
 
   // standard TAB bend marks: a curved arrow up from the fret to "full" / "1/2" above the staff;
@@ -309,4 +357,5 @@ const stepLabel = st => st.brush ? "ブラッシング" : (st.chord || (st.tech 
   : st.notes.length ? stepMidis(st).map(noteName).join("+") : "休符")) + (st.pm ? "（P.M.）" : "");
 const stepWhere = st => st.chord ? "" : st.notes.map(([s, f]) => `${s}弦${f}フレット`).join("・")
   + (st.tech ? { h: "（ハンマリング）", p: "（プリング）", s: "（スライド）", d: "（チョーキングを戻す）",
-    b: `（${st.bend === 1 ? "半音" : "1音"}チョーキング → ${noteName(stepMidis(st)[0])}）` }[st.tech] : "");
+    b: `（${st.bend === 1 ? "半音" : "1音"}チョーキング → ${noteName(stepMidis(st)[0])}）`, v: "（ビブラート）" }[st.tech] : "")
+  + (st.harm ? "（ハーモニクス）" : "");

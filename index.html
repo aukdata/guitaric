@@ -52,7 +52,6 @@
           <button type="button" role="radio" data-click="4">4分</button>
           <button type="button" role="radio" data-click="8">8分</button>
         </div>
-        <label class="inline">BPM<input id="prBpm" type="number" min="30" max="240" value="80" inputmode="numeric"></label>
         <label class="inline">速さ<select class="t-rate" aria-label="再生速度">
           <option value="0.2">0.2倍</option><option value="0.3">0.3倍</option><option value="0.5">0.5倍</option><option value="0.7">0.7倍</option>
           <option value="0.75">0.75倍</option><option value="1" selected>1倍</option><option value="1.25">1.25倍</option><option value="1.5">1.5倍</option>
@@ -118,7 +117,6 @@
           <button type="button" role="radio" data-click="8">8分</button>
         </div>
         <label class="inline">カポ<select id="edCapo" aria-label="カポ"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label>
-        <label class="inline">BPM<input id="edBpm" type="number" min="30" max="240" value="80" inputmode="numeric"></label>
         <label class="inline">速さ<select class="t-rate" aria-label="再生速度">
           <option value="0.2">0.2倍</option><option value="0.3">0.3倍</option><option value="0.5">0.5倍</option><option value="0.7">0.7倍</option>
           <option value="0.75">0.75倍</option><option value="1" selected>1倍</option><option value="1.25">1.25倍</option><option value="1.5">1.5倍</option>
@@ -136,7 +134,7 @@
           </div>
           <select id="popTech" aria-label="奏法" title="奏法">
             <option value="">通常</option><option value="h">H</option><option value="p">P</option><option value="s">S</option>
-            <option value="b2">↑full</option><option value="b1">↑1/2</option><option value="d2">full↓</option><option value="d1">1/2↓</option>
+            <option value="b2">↑full</option><option value="b1">↑1/2</option><option value="d2">full↓</option><option value="d1">1/2↓</option><option value="v">ビブラート</option><option value="n">ハーモニクス</option>
           </select>
           <button id="popPlay" type="button" class="icon" title="この音を鳴らす" aria-label="この音を鳴らす"><i data-icon="play"></i></button>
           <button id="popClose" type="button" class="icon pop-close" title="閉じる（Esc）" aria-label="閉じる"><i data-icon="x"></i></button>
@@ -156,6 +154,13 @@
             <div class="len-ticks" aria-hidden="true"><span>32</span><span>16</span><span class="dotted">付</span><span>8</span><span class="dotted">付</span><span>4</span><span class="dotted">付</span><span>2</span><span class="dotted">付</span><span>全</span></div>
           </div>
           <output id="popLenText"></output>
+        </div>
+        <div class="pop-row pop-flow">
+          <label class="inline pop-bpm" title="この音からのテンポ">♩=<input id="popBpm" type="number" min="20" max="300" inputmode="numeric" aria-label="テンポ"></label>
+          <div class="seg" role="group" aria-label="繰り返し">
+            <button id="popRepStart" type="button" aria-pressed="false" title="繰り返しの始め">|:</button><button id="popRepEnd" type="button" aria-pressed="false" title="繰り返しの終わり">:|</button><button id="popVolta" type="button" aria-pressed="false" title="1番カッコ">1.</button>
+          </div>
+          <select id="popRepCount" aria-label="繰り返す回数" title="繰り返す回数"><option value="2">×2</option><option value="3">×3</option><option value="4">×4</option><option value="5">×5</option><option value="6">×6</option><option value="7">×7</option><option value="8">×8</option></select>
         </div>
         <div class="pop-row actions">
           <button id="popInsBefore" type="button" title="前に挿入（Shift+Enter）">← 前に挿入</button>
@@ -180,6 +185,10 @@
             <li><code>6-3</code> … 6弦3フレット（弦は 1＝細い弦 〜 6＝太い弦）、<code>6-3+5-2</code> … 同時に弾く音、<code>r</code> … 休符</li>
             <li><code>4-7h</code> <code>4-5p</code> <code>5-5s</code> … ハンマリング・プリング・スライド</li>
             <li><code>3-7b</code> <code>3-7b1</code> <code>3-7d</code> … 1音チョーキング・半音チョーキング・チョーキングを戻す</li>
+            <li><code>3-7v</code> … ビブラート、<code>3-&lt;12&gt;</code> … ハーモニクス（3・4・5・7・9・12・16・19・24フレット）</li>
+            <li><code>C/G</code> … スラッシュコード（ベースを G に）</li>
+            <li><code>@bpm120</code> … ここからテンポ120（曲の途中でも書けます）</li>
+            <li><code>@[ … @]</code> … 間を2回、<code>@]3</code> で3回繰り返し。<code>@[ A @1 B @] C</code> は A B A C（@1 は1番カッコ）</li>
             <li><code>~:8</code> … タイ。直前の音を8マス分のばします</li>
             <li><code>:2</code> … 長さ（例 <code>6-3:2</code> は8分音符2つ分）。<code>@16</code> を先頭に書くと1マスが16分音符になります</li>
           </ul>
@@ -206,6 +215,8 @@
           <tr><td><kbd>L</kbd></td><td>判定ゆるめの切り替え</td></tr>
           <tr><td><kbd>M</kbd></td><td>ブリッジミュートの切り替え</td></tr>
           <tr><td><kbd>X</kbd></td><td>ブラッシングの切り替え</td></tr>
+          <tr><td><kbd>V</kbd></td><td>ビブラートの切り替え</td></tr>
+          <tr><td><kbd>N</kbd></td><td>ハーモニクスの切り替え</td></tr>
           <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>長さを短く・長く</td></tr>
           <tr><td><kbd>C</kbd></td><td>コード名を入力</td></tr>
           <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>選択中の弦の音を消す</td></tr>

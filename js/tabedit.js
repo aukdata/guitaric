@@ -11,36 +11,56 @@ function stepToken(st, withLen) {
   const q = (st.pm ? "_" : "") + (st.loose ? "?" : "");
   if (st.chord) return st.chord + q + len;
   const tech = st.tech ? st.tech + (st.tech === "b" && st.bend === 1 ? "1" : st.tech === "d" && st.bend ? st.bend : "") : "";
-  return st.notes.map(([s, f]) => `${s}-${f}`).join("+") + tech + q + len;
+  return st.notes.map(([s, f]) => st.harm ? `${s}-<${f}>` : `${s}-${f}`).join("+") + tech + q + len;
 }
 
-const stepSig = st => JSON.stringify([st.notes, st.chord || "", st.len, st.tech || "", st.bend || 0, !!st.loose, !!st.tie]);
+// tempo and repeat marks around a token ("@[ @bpm120 C*4 @]3"): those before it from its first step,
+// the repeat end from its last; volta: it opens a first ending
+function marked(st, last, tok, volta, noBpm) {
+  return (st.repStart ? "@[ " : "") + (volta ? "@1 " : "") + (st.bpm && !noBpm ? `@bpm${st.bpm} ` : "") + tok
+    + (last.repEnd ? (last.repEnd === 2 ? " @]" : ` @]${last.repEnd}`) : "");
+}
+// marks that belong to a place in the song, not to the note there (kept when the note is replaced)
+const MARKS = ["bpm", "repStart", "repEnd", "volta"];
+const withMarks = (from, st) => { for (const k of MARKS) if (from[k]) st[k] = from[k]; return st; };
+
+const noteSig = st => JSON.stringify([st.notes, st.chord || "", st.len, st.tech || "", st.bend || 0, !!st.loose, !!st.tie,
+  !!st.pm, !!st.brush, !!st.harm, !!st.volta]);
+const stepSig = st => noteSig(st) + JSON.stringify([st.bpm || 0, !!st.repStart, st.repEnd || 0]);
 
 // Writes the steps as bar-separated text, keeping it short where the parser gives the same steps back
 // ("| C*4 | G Am |" rather than "| C:2 C:2 C:2 C:2 | G:4 Am:4 |").
+// The first step's tempo goes in front of the first bar ("@bpm90 | C G |").
 function stepsToText(steps, grid, timeSig, prefix) {
   const barCells = timeSig[0] * grid / 4, bars = [];
   let cell = 0;
   for (const st of steps) { const b = Math.floor(cell / barCells); (bars[b] = bars[b] || []).push(st); cell += st.len; }
+  const opensVolta = new Set(steps.filter((st, i) => st.volta && !(steps[i - 1] && steps[i - 1].volta)));
+  const lead = steps[0] && steps[0].bpm ? `@bpm${steps[0].bpm} ` : "";
+  // the parser reads the marks back too; a first ending runs on into the next bar
   const same = (a, b) => a.length === b.length && a.every((st, i) => stepSig(st) === stepSig(b[i]));
-  const out = bars.filter(Boolean).map(bar => {
-    // runs of the same chord with the same length become "C*4"
+  const strip = st => { const c = { ...st }; delete c.tempo; delete c.capo; return c; };
+  const out = bars.filter(Boolean).map((bar, bi) => {
+    // runs of the same chord with the same length (and no marks) become "C*4"
     const runs = [];
+    // (marks can open a run, and a repeat end close it)
     for (const st of bar) {
       const r = runs[runs.length - 1];
-      if (r && st.chord && r.st.chord === st.chord && stepSig(r.st) === stepSig(st)) r.n++;
-      else runs.push({ st, n: 1 });
+      if (r && !st.bpm && !st.repStart && !opensVolta.has(st) && !r.last.repEnd && st.chord && r.st.chord === st.chord && noteSig(r.st) === noteSig(st)) { r.n++; r.last = st; }
+      else runs.push({ st, last: st, n: 1 });
     }
     const tok = (r, open) => {
-      if (!r.st.chord || r.n === 1) return open && r.st.chord ? stepToken(r.st, false) : stepToken(r.st, true);
-      const q = r.st.loose ? "?" : "";
-      return `${r.st.chord}*${r.n}${q}` + (open ? "" : ":" + r.st.len * r.n);
+      let t;
+      if (!r.st.chord || r.n === 1) t = open && r.st.chord ? stepToken(r.st, false) : stepToken(r.st, true);
+      else t = `${r.st.chord}*${r.n}${(r.st.pm ? "_" : "") + (r.st.loose ? "?" : "")}` + (open ? "" : ":" + r.st.len * r.n);
+      return marked(r.st, r.last, t, opensVolta.has(r.st), r.st === steps[0]);
     };
     const short = runs.map(r => tok(r, true)).join(" ");
-    if (same(parseSongText(`|${short}|`, { grid, timeSig }).steps, bar)) return short;
+    const pre = (bi === 0 ? lead : "") + (bar[0].volta && !opensVolta.has(bar[0]) ? "@1 " : "");
+    if (same(parseSongText(`${pre}|${short}|`, { grid, timeSig }).steps, bar.map(strip))) return short;
     return runs.map(r => tok(r, false)).join(" ");
   });
-  return (prefix || "") + "| " + out.join(" | ") + " |";
+  return (prefix || "") + lead + "| " + out.join(" | ") + " |";
 }
 
 function lenChoices(grid, cur) {
@@ -61,20 +81,20 @@ const ed = {
   undo: [], redo: [], digit: "", digitAt: 0, clip: null, play: null,
 };
 
-const edSnapshot = () => JSON.stringify([$("edTitle").value.trim(), +$("edBpm").value || 80, ed.text]);
+const edSnapshot = () => JSON.stringify([$("edTitle").value.trim(), ed.text]);
 const edDirty = () => ed.loaded && edSnapshot() !== ed.saved;
 const cloneStep = st => ({ ...st, notes: st.notes.map(n => n.slice()) });
 
 function edSaveDraft() {
   try {
-    localStorage.setItem(ED_DRAFT, JSON.stringify({ id: ed.id, grid: ed.grid, title: $("edTitle").value, bpm: +$("edBpm").value || 80, text: ed.text, saved: ed.saved }));
+    localStorage.setItem(ED_DRAFT, JSON.stringify({ id: ed.id, grid: ed.grid, title: $("edTitle").value, text: ed.text, saved: ed.saved }));
   } catch (e) {}
 }
 
 // Opens a song (null = new song) in the editor and switches to it.
 function openEditor(s) {
   if (edDirty() && !confirm(ED_DISCARD)) return;
-  edLoad(s ? { id: s.id, grid: s.grid || 8, title: s.title, bpm: s.bpm || 80, text: s.text } : null);
+  edLoad(s ? { id: s.id, grid: s.grid || 8, title: s.title, text: textWithBpm(s) } : null);
   location.hash = "edit";
 }
 
@@ -83,9 +103,8 @@ function edLoad(d, saved) {
   ed.loaded = true;
   ed.id = d ? d.id : null;
   ed.grid = (d && d.grid) || 8;
-  ed.text = d ? d.text : NEW_SONG_TEXT;
+  ed.text = d ? textWithBpm(d) : NEW_SONG_TEXT; // (a draft from before "@bpm" carries d.bpm)
   $("edTitle").value = d ? d.title : "";
-  $("edBpm").value = d ? d.bpm : 80;
   ed.undo = []; ed.redo = [];
   ed.saved = saved || (d && d.id ? edSnapshot() : "");
   ed.sel = { i: 0, s: 1 }; ed.popOpen = false;
@@ -203,9 +222,17 @@ function edShowPop() {
   $("popLoose").disabled = !st.notes.length;
   $("popPm").checked = !!st.pm;
   $("popPm").disabled = !st.notes.length;
+  // techniques on a single note; harmonics also on notes played together
   const single = !st.chord && st.notes.length === 1;
-  $("popTech").disabled = !single;
-  $("popTech").value = single && st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(i) : "") : "";
+  $("popTech").disabled = st.chord || !st.notes.length;
+  $("popTech").querySelectorAll("option").forEach(o => { o.disabled = !single && o.value !== "" && o.value !== "n"; });
+  $("popTech").value = st.harm ? "n" : single && st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(i) : "") : "";
+  if (document.activeElement !== $("popBpm")) $("popBpm").value = st.tempo || ed.song.bpm || 80;
+  $("popRepStart").setAttribute("aria-pressed", String(!!st.repStart));
+  $("popRepEnd").setAttribute("aria-pressed", String(!!st.repEnd));
+  $("popVolta").setAttribute("aria-pressed", String(!!st.volta));
+  $("popRepCount").value = st.repEnd || 2;
+  $("popRepCount").disabled = !st.repEnd;
   const k = lenPos(st.len, ed.song.grid), exact = Math.abs(st.len / ed.song.grid - LEN_VALUES[k][0]) < 1e-9;
   $("popLen").value = k;
   $("popLenText").textContent = exact ? LEN_VALUES[k][1] : `${st.len}/${ed.song.grid}`;
@@ -281,6 +308,7 @@ function setFret(st, s, f) {
   st.notes.sort((a, b) => b[0] - a[0]);
   if (st.notes.length !== 1) { delete st.tech; delete st.bend; }
   if (!st.notes.length) { delete st.loose; delete st.pm; }
+  if (st.harm && st.notes.some(n => !HARMONICS[n[1]])) delete st.harm; // no harmonic at that fret
 }
 const restStep = len => ({ notes: [], len });
 
@@ -290,17 +318,43 @@ function edFret(f, string, merge) {
   edChange(steps => { setFret(steps[i], s, f); return { i, s }; }, { merge });
 }
 
-// "h" "p" "s" "b2" "b1" "d" or "" (none); the same one again turns it off
+// "h" "p" "s" "b2" "b1" "d" "v" (vibrato), "n" (harmonics) or "" (none); the same one again turns it off
+// (harmonics also go on notes played together, at harmonic frets only)
 function edTech(v, toggle) {
   if (!ed.sel) return;
   const st = ed.song.steps[ed.sel.i];
-  if (st.chord || st.notes.length !== 1) { edStatus("奏法は単音にだけ付けられます"); return; }
-  const cur = st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(ed.sel.i) : "") : "";
+  const cur = st.harm ? "n" : st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(ed.sel.i) : "") : "";
   if (toggle && cur === v) v = "";
+  if (v === "n" ? st.chord || !st.notes.length : v && (st.chord || st.notes.length !== 1)) { edStatus("奏法は単音にだけ付けられます"); return; }
+  if (v === "n" && st.notes.some(n => !HARMONICS[n[1]])) { edStatus("ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです"); return; }
   const { i } = ed.sel;
   edChange(steps => {
-    delete steps[i].tech; delete steps[i].bend;
-    if (v) { steps[i].tech = v[0]; if (v[1]) steps[i].bend = +v[1]; }
+    delete steps[i].tech; delete steps[i].bend; delete steps[i].harm;
+    if (v === "n") steps[i].harm = true;
+    else if (v) { steps[i].tech = v[0]; if (v[1]) steps[i].bend = +v[1]; }
+  });
+}
+
+// the tempo from this step on ("@bpm"); the same tempo as before it removes the change
+function edBpm(v) {
+  if (!ed.sel || !(v >= 20 && v <= 300)) return;
+  const { i } = ed.sel, before = i > 0 ? ed.song.steps[i - 1].tempo : 0;
+  edChange(steps => { if (v === before) delete steps[i].bpm; else steps[i].bpm = v; }, { merge: "bpm" });
+}
+// repeat marks on this step: "start" (|: before it), "end" (:| after it, played n times), "volta" (first ending)
+function edRepeat(kind, n) {
+  if (!ed.sel) return;
+  const { i } = ed.sel;
+  edChange(steps => {
+    const st = steps[i];
+    if (kind === "start") { if (st.repStart) delete st.repStart; else st.repStart = true; }
+    else if (kind === "end") { if (n) st.repEnd = n; else if (st.repEnd) delete st.repEnd; else st.repEnd = 2; }
+    else if (kind === "volta") {
+      // a first ending runs from here to the repeat's end
+      const on = !st.volta;
+      for (let k = i; k < steps.length; k++) { if (on) steps[k].volta = true; else delete steps[k].volta; if (steps[k].repEnd) break; }
+      if (!on) for (let k = i - 1; k >= 0 && steps[k].volta && !steps[k].repEnd; k--) delete steps[k].volta;
+    }
   });
 }
 
@@ -336,20 +390,31 @@ function edInsert(after, step) {
   if (!ed.sel) return;
   const { i, s } = ed.sel, at = after ? i + 1 : i;
   ed.noteDraft = at; // the new step opens as a note
-  // a copy of the current step (or of the given one: paste / duplicate)
-  edChange(steps => { steps.splice(at, 0, cloneStep(step || steps[i])); return { i: at, s }; });
+  // a copy of the current step (or of the given one: paste / duplicate), without its tempo or repeat marks
+  edChange(steps => {
+    const c = cloneStep(step || steps[i]);
+    delete c.bpm; delete c.repStart; delete c.repEnd;
+    if (!(steps[at] && steps[at].volta && steps[at - 1] && steps[at - 1].volta)) delete c.volta;
+    steps.splice(at, 0, c); return { i: at, s };
+  });
 }
 
 function edDelete() {
   if (!ed.sel) return;
   const { i, s } = ed.sel;
-  edChange(steps => { steps.splice(i, 1); return steps.length ? { i: Math.min(i, steps.length - 1), s } : null; });
+  edChange(steps => {
+    // a tempo change or repeat start moves on to the next step, a repeat end back to the one before
+    const [gone] = steps.splice(i, 1), next = steps[i], prev = steps[i - 1];
+    if (next) { if (gone.bpm && !next.bpm) next.bpm = gone.bpm; if (gone.repStart) next.repStart = true; }
+    if (prev && gone.repEnd && !prev.repEnd) prev.repEnd = gone.repEnd;
+    return steps.length ? { i: Math.min(i, steps.length - 1), s } : null;
+  });
 }
 
 function edRest() {
   if (!ed.sel) return;
   const { i } = ed.sel;
-  edChange(steps => { steps[i] = restStep(steps[i].len); });
+  edChange(steps => { steps[i] = withMarks(steps[i], restStep(steps[i].len)); });
 }
 
 // brushing (muted strum, "x"); again turns it back into a rest
@@ -357,7 +422,7 @@ function edBrush(toggle) {
   if (!ed.sel) return;
   const { i } = ed.sel;
   ed.noteDraft = null;
-  edChange(steps => { const len = steps[i].len; steps[i] = toggle && steps[i].brush ? restStep(len) : { notes: [], brush: true, len }; });
+  edChange(steps => { const len = steps[i].len; steps[i] = withMarks(steps[i], toggle && steps[i].brush ? restStep(len) : { notes: [], brush: true, len }); });
 }
 
 // bridge mute ("_"), only on a sounding note or chord
@@ -376,7 +441,7 @@ function edChord(name) {
   const notes = chordVoicing(name);
   if (!notes) { edStatus(`「${name}」はコード名として読めません`); return; }
   const { i } = ed.sel;
-  edChange(steps => { const st = steps[i]; steps[i] = { notes, chord: name, len: st.len, ...(st.loose ? { loose: true } : {}) }; });
+  edChange(steps => { const st = steps[i]; steps[i] = withMarks(st, { notes, chord: name, len: st.len, ...(st.loose ? { loose: true } : {}), ...(st.pm ? { pm: true } : {}) }); });
 }
 
 // a new bar of quarter rests at the end (a part-filled last bar is finished first)
@@ -408,15 +473,14 @@ function edPlay() {
   if (ctx.state === "suspended") ctx.resume();
   const from = ed.sel ? ed.sel.i : 0;
   const gain = ctx.createGain(); gain.gain.value = transportGain(); gain.connect(ctx.destination);
-  // the song's tempo times the playback speed (0.2x ... 1.5x)
-  const bpm = Math.max(30, Math.min(240, +$("edBpm").value || 80)) * transport.rate;
-  const r = scheduleSong(ed.song, from, bpm, gain, i => {
+  // each step's tempo ("@bpm") times the playback speed (0.2x ... 1.5x)
+  const r = scheduleSong(ed.song, from, transport.rate, gain, i => {
     if (!ed.play) return;
     ed.play.cur = i;
     if (ed.tab) { ed.tab.setPlaying(i); ed.tab.scrollTo(i); }
   });
   ed.play = { ...r, from, cur: from, gain };
-  scheduleSongClicks(ed.song, from, bpm, r.start, gain);
+  scheduleSongClicks(ed.song, from, transport.rate, r.start, gain);
   ed.play.timers.push(setTimeout(() => edStop(true), (r.end - ctx.currentTime) * 1000));
   setIcon($("edPlay"), "square"); $("edPlay").setAttribute("aria-label", "停止"); $("edPlay").classList.add("on");
   edRender();
@@ -441,7 +505,7 @@ function edStop(natural) {
 function edSave() {
   if (!ed.song.steps.length) return;
   const list = loadUserSongs();
-  const entry = { id: ed.id || "song-" + Date.now().toString(36), title: $("edTitle").value.trim() || "無題の曲", bpm: +$("edBpm").value || 80, text: ed.text.trim() };
+  const entry = { id: ed.id || "song-" + Date.now().toString(36), title: $("edTitle").value.trim() || "無題の曲", text: ed.text.trim() };
   if (ed.grid !== 8) entry.grid = ed.grid;
   const at = list.findIndex(x => x.id === entry.id);
   if (at >= 0) list[at] = entry; else list.unshift(entry);
@@ -468,12 +532,12 @@ function edPractice() {
 // back to the song as saved (a new song: empty), so coming back to the editor shows that
 function edRevert() {
   const s = ed.id && loadUserSongs().find(x => x.id === ed.id);
-  edLoad(s ? { id: s.id, grid: s.grid || 8, title: s.title, bpm: s.bpm || 80, text: s.text } : null);
+  edLoad(s ? { id: s.id, grid: s.grid || 8, title: s.title, text: textWithBpm(s) } : null);
 }
 // practice what the editor holds now, without saving it
 function edGoPractice() {
   if (ed.song.errors.length || !ed.song.steps.length) { edStatus("練習できる音がありません"); return; }
-  loadPracticeSong({ title: $("edTitle").value.trim() || "無題の曲", bpm: +$("edBpm").value || 80, text: ed.text, grid: ed.grid }, true);
+  loadPracticeSong({ title: $("edTitle").value.trim() || "無題の曲", text: ed.text, grid: ed.grid }, true);
   location.hash = "practice";
 }
 
@@ -523,6 +587,12 @@ $("popTech").addEventListener("change", e => edTech(e.target.value, false));
 $("popLen").addEventListener("input", () => edLenValue(+$("popLen").value));
 $("popLoose").addEventListener("change", e => edLoose(e.target.checked));
 $("popPm").addEventListener("change", e => edPm(e.target.checked));
+$("popBpm").addEventListener("change", e => edBpm(Math.round(+e.target.value)));
+$("popBpm").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } });
+$("popRepStart").addEventListener("click", () => edRepeat("start"));
+$("popRepEnd").addEventListener("click", () => edRepeat("end"));
+$("popVolta").addEventListener("click", () => edRepeat("volta"));
+$("popRepCount").addEventListener("change", e => edRepeat("end", +e.target.value));
 $("edCapo").addEventListener("change", e => edCapo(+e.target.value));
 $("popChordSet").addEventListener("click", () => { edChord($("popChord").value.trim()); $("popChord").blur(); });
 $("popChord").addEventListener("keydown", e => {
@@ -533,7 +603,7 @@ $("popInsBefore").addEventListener("click", () => edInsert(false));
 $("popInsAfter").addEventListener("click", () => edInsert(true));
 $("popDel").addEventListener("click", edDelete);
 $("popPlay").addEventListener("click", () => {
-  if (ed.sel) previewStep(ed.song, ed.sel.i, Math.max(30, Math.min(240, +$("edBpm").value || 80)) * transport.rate);
+  if (ed.sel) previewStep(ed.song, ed.sel.i, transport.rate);
 });
 $("popClose").addEventListener("click", () => { ed.popOpen = false; edShowPop(); });
 
@@ -560,7 +630,6 @@ $("edPractice").addEventListener("click", edPractice);
 $("edPrev").addEventListener("click", () => edMove(-1, 0));
 $("edNext").addEventListener("click", () => edMove(1, 0));
 $("edTitle").addEventListener("input", () => { $("edSave").dataset.dirty = edDirty() ? "1" : ""; edSaveDraft(); });
-$("edBpm").addEventListener("input", () => { $("edSave").dataset.dirty = edDirty() ? "1" : ""; edSaveDraft(); });
 $("edPlay").addEventListener("click", edPlay);
 $("edHome").addEventListener("click", () => { if (ed.play) edStop(false); if (ed.song.steps.length) edSelect(0, ed.sel ? ed.sel.s : 1); });
 // restart from the note being played, keeping where playback began
@@ -640,6 +709,8 @@ document.addEventListener("keydown", e => {
   else if (key === "r") { done(); edRest(); }
   else if (key === "l") { done(); edLoose(!ed.song.steps[ed.sel.i].loose); }
   else if (key === "x") { done(); edBrush(true); }
+  else if (key === "v") { done(); edTech("v", true); }
+  else if (key === "n") { done(); edTech("n", true); }
   else if (key === "m") { done(); edPm(!ed.song.steps[ed.sel.i].pm); }
   else if (k === "[") { done(); edLenStep(-1); }
   else if (k === "]") { done(); edLenStep(1); }

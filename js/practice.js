@@ -25,8 +25,12 @@ function loadPracticeSong(s, fromEditor) {
   if (model.sources.length) stopModel();
   practice.fromEditor = fromEditor;
   practice.songId = fromEditor ? null : s.id;
-  practice.song = buildSong(s);
-  practice.tab = renderTab($("pTab"), practice.song, { onStepClick: practiceStepClick });
+  // view: the song as written (drawn); song: as played, repeats written out (judged step by step)
+  practice.view = buildSong(s);
+  practice.song = expandSong(practice.view);
+  practice.at = practice.view.steps.map(() => []); // written step -> its places in the played song
+  practice.song.steps.forEach((st, k) => practice.at[st.src].push(k));
+  practice.tab = renderTab($("pTab"), practice.view, { onStepClick: practiceStepClick });
   $("prTitle").textContent = (s.title || "無題の曲") + (fromEditor ? "（未保存）" : "");
   setMetroSong(practice.song);
   restartPractice();
@@ -38,21 +42,34 @@ function openPractice(id) {
 }
 
 // a tap moves there; a second tap on the same note plays just that note
+// (i: the written step; inside a repeat, the time through nearest to where the practice is)
 let lastStepTap = { i: -1, t: 0 };
 function practiceStepClick(i) {
   const now = performance.now(), again = lastStepTap.i === i && now - lastStepTap.t < 400;
   lastStepTap = { i, t: now };
   if (again) {
     // the speaker's note must not be judged as played
-    const end = previewStep(practice.song, i, effectiveBpm());
+    const end = previewStep(practice.view, i, transport.rate);
     if (end) { practice.mutedUntil = Math.max(practice.mutedUntil, end); practice.tracker.reset(); }
     return;
   }
   if (model.sources.length) stopModel();
-  gotoStep(i);
+  gotoStep(nearestPlace(i));
 }
 
-function markStep(k, state) { practice.marks[k] = state; practice.tab.setState(k, state); }
+// the place of written step i in the played song: of its times through, the one nearest to now
+// (a later one wins a tie, so the next time through shows as not played yet)
+function nearestPlace(i) {
+  const places = practice.at[i] || [i];
+  return places.reduce((a, k) => (Math.abs(k - practice.idx) <= Math.abs(a - practice.idx) ? k : a));
+}
+// a written step shows the state of its nearest time through
+function showStep(i) {
+  if (practice.at[i]) practice.tab.setState(i, practice.marks[nearestPlace(i)] || "");
+}
+// the written step being practiced (for scrolling the TAB to it)
+const practiceSrc = () => { const st = practice.song.steps[Math.min(practice.idx, practice.song.steps.length - 1)]; return st ? st.src : 0; };
+function markStep(k, state) { practice.marks[k] = state; showStep(practice.song.steps[k].src); }
 
 function playableIndex(i) {
   const steps = practice.song.steps;
@@ -71,8 +88,9 @@ function restartPractice() {
 function gotoStep(i) {
   const steps = practice.song.steps;
   // steps from here on are unplayed again; a step left "current" by jumping ahead is cleared too
-  for (let k = 0; k < steps.length; k++) if (k >= i || practice.marks[k] === "current") markStep(k, "");
+  for (let k = 0; k < steps.length; k++) if (k >= i || practice.marks[k] === "current") practice.marks[k] = "";
   practice.idx = i;
+  practice.view.steps.forEach((_, s) => showStep(s));
   practice.okRun = 0; practice.missRun = 0; practice.fresh = false;
   if (i >= steps.length) { finishPractice(); return; }
   const prev = steps.slice(0, i).reverse().find(x => x.notes.length);
@@ -86,7 +104,7 @@ function gotoStep(i) {
   practice.last = null;
   practice.strummed = false;
   markStep(i, "current");
-  practice.tab.scrollTo(i);
+  practice.tab.scrollTo(steps[i].src);
   const st = steps[i];
   $("pWhere").textContent = practice.loose ? (st.loose || st.pm ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : "";
   $("pProgress").textContent = `${i + 1} / ${steps.length}`;
@@ -146,7 +164,7 @@ function judgeStep(st, res, tr, repeat, ringing) {
   }
   const want = stepMidis(st), wantPcs = want.map(m => m % 12);
   const top = Math.max(0, ...res.notes.map(n => n.salience));
-  if (st.tech === "b") return judgeBend(st, res, top, ringing);
+  if (st.tech === "b" || st.tech === "v") return judgeBend(st, res, top, ringing);
   // strong notes of another pitch class that the previous step doesn't explain
   const extra = [...new Set(res.notes.filter(n => n.salience >= top * JUDGE.extraSal && !wantPcs.includes(n.midi % 12) && !ringing.includes(n.midi % 12)).map(n => noteName(n.midi)))];
   if (want.length === 1) {
@@ -160,15 +178,15 @@ function judgeStep(st, res, tr, repeat, ringing) {
 
 // A bend passes once the pitch has risen most of the way: within 60 cents below the target (a slightly
 // short bend is the usual miss) to 50 above. The fretted pitch and the pitches on the way up are the
-// same string bending, not wrong notes.
+// same string bending, not wrong notes. Vibrato (aim 0) wavers around the fretted pitch the same way.
 function judgeBend(st, res, top, ringing) {
-  const from = OPEN_MIDI[st.notes[0][0]] + (st.capo || 0) + st.notes[0][1], aim = st.bend * 100;
+  const from = OPEN_MIDI[st.notes[0][0]] + (st.capo || 0) + st.notes[0][1], aim = st.tech === "b" ? st.bend * 100 : 0;
   const cents = n => 1200 * Math.log2(n.freq / midiToFreq(from));
   const loud = res.notes.filter(n => n.salience >= top * 0.6);
   const hit = loud.some(n => cents(n) >= aim - 60 && cents(n) <= aim + 50);
   const extra = [...new Set(res.notes.filter(n => n.salience >= top * JUDGE.extraSal && !(cents(n) > -50 && cents(n) < aim + 60) &&
     !ringing.includes(n.midi % 12)).map(n => noteName(n.midi)))];
-  return { ok: hit && !extra.length, missing: hit ? [] : [noteName(from + st.bend)], extra };
+  return { ok: hit && !extra.length, missing: hit ? [] : [noteName(from + aim / 100)], extra };
 }
 
 function showWrong(st, res, tr, j) {
@@ -191,7 +209,7 @@ function passStep() {
 
 function practiceTick(buf) {
   const cur = practice.song.steps[practice.idx];
-  const res = detectNotes(buf, ctx.sampleRate, { anyPitch: !!cur && cur.tech === "b" });
+  const res = detectNotes(buf, ctx.sampleRate, { anyPitch: !!cur && (cur.tech === "b" || cur.tech === "v") });
   const db = 20 * Math.log10(res.rms + 1e-9);
   $("pMeter").style.width = Math.max(0, Math.min(100, (db + 70) / 60 * 100)) + "%";
   // strums found by the short-window onset detector since the last frame
@@ -324,7 +342,7 @@ function stopModel(natural) {
   if (wasPlaying && model.from != null && practice.song) {
     const to = transport.stopMode === "return" ? model.from : model.cur;
     if (to !== practice.idx && to < practice.song.steps.length) gotoStep(to);
-    else if (practice.tab) practice.tab.scrollTo(practice.idx);
+    else if (practice.tab) practice.tab.scrollTo(practiceSrc());
   }
   practice.mutedUntil = natural ? practice.mutedUntil : Math.min(practice.mutedUntil, ctx ? ctx.currentTime : 0);
   practice.tracker.reset();
@@ -336,11 +354,14 @@ function playModel() {
   ensureContext();
   if (ctx.state === "suspended") ctx.resume();
   if (model.sources.length) { stopModel(); return; }
-  const from = Math.min(practice.idx, practice.song.steps.length - 1), bpm = effectiveBpm();
+  const from = Math.min(practice.idx, practice.song.steps.length - 1), rate = transport.rate;
   stopMetronome();
   const gain = ctx.createGain(); gain.gain.value = transportGain(); gain.connect(ctx.destination);
-  const r = scheduleSong(practice.song, from, bpm, gain, i => { model.cur = i; practice.tab.setPlaying(i); practice.tab.scrollTo(i); });
-  scheduleSongClicks(practice.song, from, bpm, r.start, gain);
+  const r = scheduleSong(practice.song, from, rate, gain, i => {
+    model.cur = i; const src = practice.song.steps[i].src;
+    practice.tab.setPlaying(src); practice.tab.scrollTo(src);
+  });
+  scheduleSongClicks(practice.song, from, rate, r.start, gain);
   model.sources = r.sources; model.timers = r.timers; model.gain = gain; model.from = from; model.cur = from;
   const end = r.end + 1.6;
   model.timers.push(setTimeout(() => stopModel(true), (r.end - ctx.currentTime) * 1000));
@@ -392,6 +413,5 @@ $("prEdit").addEventListener("click", () => {
   if (ed.loaded && ed.id === s.id && !s.preset) { location.hash = "edit"; return; }
   openEditor(s.preset ? { ...s, id: null, title: s.title + "（コピー）" } : s);
 });
-$("prBpm").addEventListener("input", () => updateMetronome(true));
 
 loadPractice(currentSongId());
