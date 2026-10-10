@@ -96,6 +96,9 @@ function finishPractice() {
 // (thresholds from the real recordings: cannon.wav's 32 strums vs. its squeaks and finger noise)
 const isStrum = o => o.rise >= 8 || (o.rise >= 3 && o.strength >= 0.025) || (o.rise >= 2 && o.strength >= 0.06);
 
+// notes sounded by the fretting hand alone: no new pick attack to wait for
+const noAttack = st => !st.chord && ["h", "p", "s", "d"].includes(st.tech);
+
 const soundKey = st => st.chord ? (chordPitchClasses(st.chord) || []).slice().sort().join() : stepMidis(st).sort().join();
 
 // Is the expected step sounding, and nothing else? Returns { ok, missing, extra } (note names).
@@ -193,9 +196,9 @@ function practiceTick(buf) {
   }
   practice.okRun = 0;
   // the target is not sounding now, so the next time it appears it is a fresh attempt
-  // (only for single notes, where a soft hammer-on may not register as an attack; a chord always
-  // needs a strum: fingers landing on the next shape make sounds of their own)
-  if (++practice.missRun >= 2 && !practice.sameAsPrev && !st.chord) practice.fresh = true;
+  // (only for hammer-ons, pull-offs, slides and bend releases, which have no pick attack; every
+  // other note or chord needs its own attack, or one pluck could pass two steps of the same note)
+  if (++practice.missRun >= 2 && noAttack(st)) practice.fresh = true;
   practice.last = { res, tr, j };
   // only a strum made while this step is current can be wrong (not the previous chord still ringing)
   // (a note held over from the previous step is not a mistake either: the new one may just be late)
