@@ -111,7 +111,7 @@ code { font-family: var(--f-mono); background: var(--accent-soft); border-radius
 .hint { margin: 8px 0 0; color: var(--muted); font-size: .85rem; }
 
 /* ===== TAB staff ===== */
-.tab-scroll { overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.tab-scroll { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 svg.tab { display: block; }
 .tab-lines line { stroke: var(--muted); stroke-opacity: .5; stroke-width: 1; }
 .tab-lines line.tab-bar { stroke-opacity: .8; stroke-width: 1.5; }
@@ -121,7 +121,10 @@ svg.tab { display: block; }
 .tab-bg { fill: var(--surface); }
 .tab-fret { font: 500 14px var(--f-mono); fill: var(--fg); text-anchor: middle; }
 .tab-chord { font: 700 14px var(--f-body); fill: var(--fg); text-anchor: middle; }
+.tab-tech { font: italic 600 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
+.tab-slur { fill: none; stroke: var(--muted); stroke-width: 1.2; }
 .tab-rest { font: 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
+.tab-step[data-playing] .tab-hl, .tab-step[data-playing] .tab-bg { fill: var(--accent-soft); }
 .tab-step[data-state="current"] .tab-hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
 .tab-step[data-state="current"] .tab-bg { fill: var(--accent-soft); }
 .tab-step[data-state="current"] .tab-fret, .tab-step[data-state="current"] .tab-chord { fill: var(--accent); }
