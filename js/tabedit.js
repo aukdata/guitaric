@@ -432,13 +432,9 @@ function edPractice() {
   edStop(false);
   if (!edDirty() && ed.id) { openPractice(ed.id); return; }
   if (!edDirty() && !ed.id) { edGoPractice(); return; }
-  const dlg = $("edLeaveDlg");
-  dlg.returnValue = "";
-  dlg.onclose = () => {
-    if (dlg.returnValue === "save") { edSave(); if (!edDirty()) openPractice(ed.id); }
-    else if (dlg.returnValue === "nosave") edGoPractice();
-  };
-  dlg.showModal();
+  // system dialogs, as for 一覧: OK saves first; otherwise practice the unsaved content, or stay
+  if (confirm("保存していない変更があります。保存してから練習しますか？")) { edSave(); if (!edDirty()) openPractice(ed.id); }
+  else if (confirm("保存せずに練習しますか？")) edGoPractice();
 }
 // practice what the editor holds now, without saving it
 function edGoPractice() {
