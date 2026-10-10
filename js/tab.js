@@ -33,7 +33,7 @@ function renderTab(container, song, opts = {}) {
   let groups = [], rowEls = [], playing = -1, lastWidth = 0;
 
   function layout() {
-    const avail = Math.max(TAB.minStep * 4, (container.clientWidth || 800) - left - TAB.pad);
+    const avail = Math.floor(Math.max(TAB.minStep * 4, (container.clientWidth || 800) - left - TAB.pad));
     const widths = fullWidths.map(w => Math.min(w, avail)); // a long rest or note never overflows a row
     lastWidth = container.clientWidth;
     // pack whole bars into rows; a bar wider than the screen breaks between steps
@@ -61,7 +61,7 @@ function renderTab(container, song, opts = {}) {
     const frag = document.createDocumentFragment();
     rows.forEach((r, ri) => {
       const end = r.steps.length ? at[r.steps[r.steps.length - 1]].x + at[r.steps[r.steps.length - 1]].w : left;
-      const width = end + TAB.pad;
+      const width = Math.floor(end + TAB.pad);
       const svg = mk("svg", { class: "tab", width, height, viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": `TAB譜 ${ri + 1}段目` });
       const lines = mk("g", { class: "tab-lines" }, svg);
       for (let s = 0; s < 6; s++) {
