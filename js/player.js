@@ -64,19 +64,12 @@ function showTransport() {
 function bindTransport() {
   document.querySelectorAll("[data-click]").forEach(b => b.addEventListener("click", () => setTransport("click", +b.dataset.click)));
   document.querySelectorAll(".t-return").forEach(b => b.addEventListener("click", () => setTransport("stopMode", transport.stopMode === "return" ? "stay" : "return")));
-  // phones: "▾" shows the second toolbar row, "…" pops up click / BPM / speed
+  // phones: "…" pops up click / BPM / speed
   document.querySelectorAll(".ed-toolbar").forEach(tb => {
-    const exp = tb.querySelector(".tb-expand"), more = tb.querySelector(".tb-more-btn");
-    const setOpen = open => { tb.classList.toggle("open", open); exp.setAttribute("aria-expanded", String(open)); exp.textContent = open ? "▴" : "▾";
-      try { localStorage.setItem("guitaric.tbOpen", open ? "1" : ""); } catch (e) {} };
+    const more = tb.querySelector(".tb-more-btn");
     const setMore = open => { tb.classList.toggle("more", open); more.setAttribute("aria-expanded", String(open)); };
-    exp.addEventListener("click", () => { const open = !tb.classList.contains("open"); document.querySelectorAll(".ed-toolbar").forEach(t => t.querySelector(".tb-expand") && t.__setOpen(open)); });
     more.addEventListener("click", e => { e.stopPropagation(); setMore(!tb.classList.contains("more")); });
     document.addEventListener("click", e => { if (tb.classList.contains("more") && !e.target.closest(".tb-more")) setMore(false); });
-    tb.__setOpen = setOpen;
-    let open = false;
-    try { open = localStorage.getItem("guitaric.tbOpen") === "1"; } catch (e) {}
-    setOpen(open);
   });
   document.querySelectorAll(".t-rate").forEach(el => el.addEventListener("change", () => setTransport("rate", +el.value)));
   document.querySelectorAll(".t-vol").forEach(el => el.addEventListener("input", () => setTransport("vol", +el.value)));

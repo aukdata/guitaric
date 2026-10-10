@@ -74,7 +74,7 @@ function gotoStep(i) {
   const st = steps[i];
   $("pWhere").textContent = practice.loose ? (st.loose ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : "";
   $("pProgress").textContent = `${i + 1} / ${steps.length}`;
-  setFeedback(practice.stream ? "弾いてください" : "「マイクを開始」を押すと判定が始まります", "");
+  setFeedback(practice.stream ? "弾いてください" : "● を押すとマイクで判定が始まります", "");
 }
 
 function setFeedback(msg, kind) {
@@ -239,8 +239,7 @@ async function startPracticeMic() {
   };
   practice.tapOut = ctx.createGain(); practice.tapOut.gain.value = 0;
   practice.source.connect(practice.tap); practice.tap.connect(practice.tapOut); practice.tapOut.connect(ctx.destination);
-  $("pMic").innerHTML = '<span class="dot"></span>マイクを停止';
-  $("pMic").classList.remove("primary");
+  $("pMic").setAttribute("aria-pressed", "true"); $("pMic").setAttribute("aria-label", "マイクを停止"); $("pMic").title = "マイクを停止";
   setFeedback("弾いてください", "");
   updateMetronome();
   await keepScreenOn();
@@ -262,8 +261,7 @@ function stopPracticeMic() {
   if (practice.tap) practice.tap.onaudioprocess = null;
   practice.stream = practice.source = practice.tap = practice.tapOut = null;
   if (practice.wakeLock) { practice.wakeLock.release().catch(() => {}); practice.wakeLock = null; }
-  $("pMic").innerHTML = '<span class="dot"></span>マイクを開始';
-  $("pMic").classList.add("primary");
+  $("pMic").setAttribute("aria-pressed", "false"); $("pMic").setAttribute("aria-label", "マイクを開始"); $("pMic").title = "マイクを開始（判定を始める）";
   $("pMeter").style.width = "0%";
   updateMetronome();
 }

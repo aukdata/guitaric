@@ -32,7 +32,6 @@
         <button id="prBack" type="button" title="曲の一覧に戻る">← 一覧</button>
         <span id="prTitle" class="ed-title-text"></span>
         <button id="prEdit" type="button" title="この曲を編集する">編集</button>
-        <button type="button" class="icon tb-expand" aria-expanded="false" title="ツールを表示" aria-label="ツールを表示">▾</button>
       </div>
       <div class="ed-group tb-row">
         <button id="pPrev" type="button" class="icon" title="前の音へ（←）" aria-label="前の音へ">‹</button>
@@ -43,7 +42,7 @@
         <button type="button" class="icon t-return" aria-pressed="true" title="↩ ON：停止すると再生を始めた位置に戻る／OFF：止めた位置のまま" aria-label="停止したら開始位置に戻る">↩</button>
         <button type="button" class="icon tb-more-btn" aria-expanded="false" title="クリック・BPM・速さ" aria-label="クリック・BPM・速さ">…</button>
         <span class="tb-sep" aria-hidden="true"></span>
-        <button id="pMic" class="primary" type="button"><span class="dot"></span>マイクを開始</button>
+        <button id="pMic" class="icon mic" type="button" title="マイクを開始（判定を始める）" aria-label="マイクを開始" aria-pressed="false">●</button>
         <div class="meter" aria-label="入力レベル"><i id="pMeter"></i></div>
       </div>
       <div class="ed-group tb-more" role="group" aria-label="テンポとクリック">
@@ -96,7 +95,6 @@
         <input id="edTitle" class="ed-title" type="text" placeholder="無題の曲" aria-label="タイトル">
         <button id="edSave" type="button" class="primary" title="保存（Ctrl+S）">保存</button>
         <button id="edPractice" type="button" title="この曲を練習する">練習</button>
-        <button type="button" class="icon tb-expand" aria-expanded="false" title="ツールを表示" aria-label="ツールを表示">▾</button>
       </div>
       <div class="ed-group tb-row">
         <button id="edPrev" type="button" class="icon" title="前の音へ（←）" aria-label="前の音へ">‹</button>
