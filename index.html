@@ -117,6 +117,7 @@
           <button type="button" role="radio" data-click="4">4分</button>
           <button type="button" role="radio" data-click="8">8分</button>
         </div>
+        <label class="inline">カポ<select id="edCapo" aria-label="カポ"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label>
         <label class="inline">BPM<input id="edBpm" type="number" min="30" max="240" value="80" inputmode="numeric"></label>
         <label class="inline">速さ<select class="t-rate" aria-label="再生速度">
           <option value="0.2">0.2倍</option><option value="0.3">0.3倍</option><option value="0.5">0.5倍</option><option value="0.7">0.7倍</option>
@@ -130,8 +131,8 @@
       <div id="edTab" class="tab-scroll"></div>
       <div id="edPop" class="ed-pop" role="dialog" aria-label="音の編集" hidden>
         <div class="pop-head">
-          <div id="popKind" class="seg pop-kind" role="radiogroup" aria-label="音符か休符か">
-            <button type="button" role="radio" class="icon" data-kind="note" title="音符" aria-label="音符"><i data-icon="music-3"></i></button><button type="button" role="radio" class="icon" data-kind="rest" title="休符（R）" aria-label="休符"><i data-icon="rest"></i></button>
+          <div id="popKind" class="seg pop-kind" role="radiogroup" aria-label="音の種類">
+            <button type="button" role="radio" class="icon" data-kind="note" title="音符" aria-label="音符"><i data-icon="music-3"></i></button><button type="button" role="radio" class="icon" data-kind="rest" title="休符（R）" aria-label="休符"><i data-icon="rest"></i></button><button type="button" role="radio" class="icon" data-kind="brush" title="ブラッシング（X）" aria-label="ブラッシング"><i data-icon="brush"></i></button>
           </div>
           <select id="popTech" aria-label="奏法" title="奏法">
             <option value="">通常</option><option value="h">H</option><option value="p">P</option><option value="s">S</option>
@@ -145,6 +146,7 @@
           <div class="pop-row">
             <input id="popChord" type="text" placeholder="コード" aria-label="コード名" autocapitalize="off" autocomplete="off" spellcheck="false">
             <button id="popChordSet" type="button" title="コードを反映（C で入力欄へ）">反映</button>
+            <label class="inline pop-loose" title="ブリッジミュート（M）"><input id="popPm" type="checkbox">P.M.</label>
             <label class="inline pop-loose" title="判定ゆるめ（L）"><input id="popLoose" type="checkbox">判定ゆるめ</label>
           </div>
         </div>
@@ -202,6 +204,8 @@
           <tr><td><kbd>D</kbd> / <kbd>Shift</kbd>+<kbd>D</kbd></td><td>full↓ / 1/2↓</td></tr>
           <tr><td><kbd>R</kbd></td><td>休符にする</td></tr>
           <tr><td><kbd>L</kbd></td><td>判定ゆるめの切り替え</td></tr>
+          <tr><td><kbd>M</kbd></td><td>ブリッジミュートの切り替え</td></tr>
+          <tr><td><kbd>X</kbd></td><td>ブラッシングの切り替え</td></tr>
           <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>長さを短く・長く</td></tr>
           <tr><td><kbd>C</kbd></td><td>コード名を入力</td></tr>
           <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>選択中の弦の音を消す</td></tr>

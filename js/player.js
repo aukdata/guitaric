@@ -10,11 +10,13 @@ function scheduleSong(song, from, bpm, out, onStep) {
     const st = steps[i], dur = st.len * cell, start = t;
     timers.push(setTimeout(() => onStep(i), (start - ctx.currentTime) * 1000));
     t += dur;
+    if (st.brush) { sources.push(brushSound(start, out)); continue; }
     if (!st.notes.length) continue;
     // a note rings until the next one starts (the last one rings on); ties after this step keep it ringing
     let held = dur, k = i + 1;
     while (steps[k] && steps[k].tie) held += steps[k++].len * cell;
-    const ring = k >= steps.length ? held + 1.6 : held + 0.05;
+    let ring = k >= steps.length ? held + 1.6 : held + 0.05;
+    if (st.pm) ring = Math.min(ring, 0.22); // bridge mute: stopped short by the palm
     const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + (st.tech === "s" ? 0.3 : 0.05), i + 1);
     const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
     const src = ctx.createBufferSource(); src.buffer = b;
@@ -30,26 +32,47 @@ function scheduleSong(song, from, bpm, out, onStep) {
       src.playbackRate.setValueAtTime(2 ** (-st.bend / 12), start);
       src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.2, dur * 0.6));
     } else if (st.tech === "d") {
-      src.playbackRate.setValueAtTime(2 ** (2 / 12), start);
-      src.playbackRate.setValueAtTime(2 ** (2 / 12), start + Math.min(0.08, dur * 0.3));
+      const up = 2 ** ((st.bend || 2) / 12);
+      src.playbackRate.setValueAtTime(up, start);
+      src.playbackRate.setValueAtTime(up, start + Math.min(0.08, dur * 0.3));
       src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.25, dur * 0.8));
     }
     const g = ctx.createGain();
     const vol = st.tech === "h" || st.tech === "p" || st.tech === "s" ? 1.6 : 2.5; // not picked: softer
-    g.gain.setValueAtTime(vol, start);
-    g.gain.setValueAtTime(vol, start + ring - 0.04);
+    if (st.pm) {
+      // the palm on the bridge dulls the sound and makes it die away fast
+      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900;
+      g.gain.setValueAtTime(vol * 1.4, start);
+      g.gain.exponentialRampToValueAtTime(vol * 0.15, start + ring - 0.04);
+      src.connect(lp); lp.connect(g);
+    } else {
+      g.gain.setValueAtTime(vol, start);
+      g.gain.setValueAtTime(vol, start + ring - 0.04);
+      src.connect(g);
+    }
     g.gain.linearRampToValueAtTime(0, start + ring);
-    src.connect(g); g.connect(out); src.start(start); src.stop(start + ring + 0.02);
+    g.connect(out); src.start(start); src.stop(start + ring + 0.02);
     sources.push(src);
   }
   return { sources, timers, start, end: t };
+}
+
+// brushing: the muted strings struck, a short dull noise with no pitch
+function brushSound(t, out) {
+  const n = Math.round(ctx.sampleRate * 0.09), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+  for (let k = 0; k < n; k++) d[k] = (Math.random() * 2 - 1) * Math.exp(-k / (ctx.sampleRate * 0.018));
+  const src = ctx.createBufferSource(); src.buffer = b;
+  const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1400; bp.Q.value = 0.8;
+  const g = ctx.createGain(); g.gain.value = 1.8;
+  src.connect(bp); bp.connect(g); g.connect(out); src.start(t);
+  return src;
 }
 
 // one step on its own (the editor window's ▶, a double tap in practice); a new one cuts the last off
 let preview = null;
 function previewStep(song, i, bpm) {
   const st = song.steps[i];
-  if (!st || !st.notes.length) return;
+  if (!st || !isPlayed(st)) return;
   ensureContext();
   if (preview) { preview.sources.forEach(src => { try { src.stop(); } catch (e) {} }); preview.gain.disconnect(); }
   const gain = ctx.createGain(); gain.gain.value = transportGain(); gain.connect(ctx.destination);

@@ -12,6 +12,7 @@ const ICONS = {
   "mic": '<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/>',
   "music-3": '<circle cx="12" cy="18" r="4"/><path d="M16 18V2"/>',
   // quarter rest, drawn in the same stroke style (not part of Lucide)
+  "brush": '<path d="M3 7h3M18 7h3M3 12h3M18 12h3M3 17h3M18 17h3"/><path d="M8.5 5.5l7 13M15.5 5.5l-7 13"/>',
   "rest": '<path d="M10 3l4.5 5.5-3.5 3.5 4 5"/><path d="M15 17c-3-1.5-6.5.5-3 4.5"/>',
   "circle": '<circle cx="12" cy="12" r="10"/>',
   "plus": '<path d="M5 12h14"/><path d="M12 5v14"/>',

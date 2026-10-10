@@ -56,7 +56,7 @@ function markStep(k, state) { practice.marks[k] = state; practice.tab.setState(k
 
 function playableIndex(i) {
   const steps = practice.song.steps;
-  while (i < steps.length && !steps[i].notes.length) i++; // wait mode skips rests
+  while (i < steps.length && !isPlayed(steps[i])) i++; // wait mode skips rests
   return i;
 }
 
@@ -77,17 +77,18 @@ function gotoStep(i) {
   if (i >= steps.length) { finishPractice(); return; }
   const prev = steps.slice(0, i).reverse().find(x => x.notes.length);
   practice.sameAsPrev = !!prev && soundKey(prev) === soundKey(steps[i]);
-  // the last strum before a chord change: the fretting hand is already moving to the next chord,
-  // so open strings and half-released notes are expected; any strum passes
   const next = steps.slice(i + 1).find(x => x.notes.length);
-  practice.loose = !!steps[i].loose || (!!steps[i].chord && practice.sameAsPrev && !!next && soundKey(next) !== soundKey(steps[i]));
+  // the last strum before a chord change: the fretting hand is already moving to the next chord,
+  // so open strings and half-released notes are expected; any strum passes.
+  // Bridge-muted notes are short and dull, so any played sound passes them too.
+  practice.loose = !!steps[i].loose || !!steps[i].pm || (!!steps[i].chord && practice.sameAsPrev && !!next && soundKey(next) !== soundKey(steps[i]));
   practice.ringing = prev ? stepMidis(prev).map(m => m % 12) : [];
   practice.last = null;
   practice.strummed = false;
   markStep(i, "current");
   practice.tab.scrollTo(i);
   const st = steps[i];
-  $("pWhere").textContent = practice.loose ? (st.loose ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : "";
+  $("pWhere").textContent = practice.loose ? (st.loose || st.pm ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : "";
   $("pProgress").textContent = `${i + 1} / ${steps.length}`;
   setFeedback("", "");
 }
@@ -97,7 +98,7 @@ function setFeedback(msg, kind) {
 }
 
 function finishPractice() {
-  const steps = practice.song.steps, idxs = steps.map((s, i) => i).filter(i => steps[i].notes.length);
+  const steps = practice.song.steps, idxs = steps.map((s, i) => i).filter(i => isPlayed(steps[i]));
   const first = idxs.filter(i => practice.firstTry[i]).length;
   const secs = practice.startedAt ? (performance.now() - practice.startedAt) / 1000 : 0;
   $("pWhere").textContent = "";
@@ -125,7 +126,9 @@ const soundKey = st => st.chord ? (chordPitchClasses(st.chord) || []).slice().so
 function judgeStep(st, res, tr, repeat, ringing) {
   const ch = tr.chroma, total = ch.reduce((a, b) => a + b, 0);
   if (st.chord) {
-    const pcs = chordPitchClasses(st.chord) || [...new Set(stepMidis(st).map(m => m % 12))];
+    // chord names are the shapes as written; a capo raises what sounds
+    const capo = st.capo || 0;
+    const pcs = chordPitchClasses(st.chord) ? chordPitchClasses(st.chord).map(pc => (pc + capo) % 12) : [...new Set(stepMidis(st).map(m => m % 12))];
     if (!total) return { ok: false, missing: [], extra: [] };
     const missing = pcs.filter(pc => ch[pc] < JUDGE.present);
     // a tone outside the chord: a wrong fret or a string that should be muted
@@ -134,7 +137,7 @@ function judgeStep(st, res, tr, repeat, ringing) {
     // the previous chord rings on for a while after a change; its tones don't count as foreign here
     // (playing the old chord again still fails, because then the new chord's own tones are missing)
     const extra = ch.reduce((a, v, pc) => a + (pcs.includes(pc) || ringing.includes(pc) ? 0 : v), 0) / total;
-    const root = parseChordName(st.chord).pc;
+    const root = (parseChordName(st.chord).pc + capo) % 12;
     // four-note chords often lose their fifth; allow one missing tone except the root
     const allowed = pcs.length >= 4 ? 1 : 0;
     const ok = !extraPcs.length && (repeat ? missing.length < pcs.length && extra <= JUDGE.extra
@@ -159,7 +162,7 @@ function judgeStep(st, res, tr, repeat, ringing) {
 // short bend is the usual miss) to 50 above. The fretted pitch and the pitches on the way up are the
 // same string bending, not wrong notes.
 function judgeBend(st, res, top, ringing) {
-  const from = OPEN_MIDI[st.notes[0][0]] + st.notes[0][1], aim = st.bend * 100;
+  const from = OPEN_MIDI[st.notes[0][0]] + (st.capo || 0) + st.notes[0][1], aim = st.bend * 100;
   const cents = n => 1200 * Math.log2(n.freq / midiToFreq(from));
   const loud = res.notes.filter(n => n.salience >= top * 0.6);
   const hit = loud.some(n => cents(n) >= aim - 60 && cents(n) <= aim + 50);
@@ -214,12 +217,14 @@ function practiceTick(buf) {
   if (ctx.currentTime < practice.mutedUntil) return;
   if (practice.idx >= steps.length) return;
   // cued on a rest: wait there, and the first strum is judged against the next note
-  if (!steps[practice.idx].notes.length) {
+  if (!isPlayed(steps[practice.idx])) {
     if (!strum) return;
     gotoStep(playableIndex(practice.idx));
     if (practice.idx >= steps.length) return;
   }
   const st = steps[practice.idx];
+  // a brushing stroke has no pitch: the strum itself passes it
+  if (st.brush) { if (strum) passStep(); return; }
   if (strum) { practice.fresh = true; practice.okRun = 0; practice.strummed = true; practice.wrongShown = false; }
   // time since the attack itself (the onset event arrives ~0.1 s late, but carries its own time)
   const since = ctx.currentTime - practice.lastStrum;
@@ -360,7 +365,7 @@ $("pPrev").addEventListener("click", () => {
 });
 $("pNext").addEventListener("click", () => {
   if (practice.idx >= practice.song.steps.length) return;
-  if (practice.song.steps[practice.idx].notes.length) { practice.firstTry[practice.idx] = false; markStep(practice.idx, "skipped"); }
+  if (isPlayed(practice.song.steps[practice.idx])) { practice.firstTry[practice.idx] = false; markStep(practice.idx, "skipped"); }
   gotoStep(practice.idx + 1);
 });
 $("pModel").addEventListener("click", playModel);

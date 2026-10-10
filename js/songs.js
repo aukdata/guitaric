@@ -1,8 +1,11 @@
 /* ===== songs: chord dictionary, text parser, presets, storage ===== */
 // Strings are numbered like TAB: 1 = high E ... 6 = low E.
 const OPEN_MIDI = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
-// a bent note is judged at the pitch it is bent up to
-const stepMidis = step => step.notes.map(([s, f]) => OPEN_MIDI[s] + f + (step.tech === "b" ? step.bend : 0));
+// sounding pitches: a bent note at the pitch it is bent up to; a capo raises every string
+// (buildSong puts the song's capo on each step)
+const stepMidis = step => step.notes.map(([s, f]) => OPEN_MIDI[s] + (step.capo || 0) + f + (step.tech === "b" ? step.bend : 0));
+// steps that are played (a brushing stroke has no pitch but is played)
+const isPlayed = st => st.notes.length > 0 || !!st.brush;
 
 // Open-position voicings, written low E -> high E ("x" = not played).
 const CHORD_SHAPES = {
@@ -75,6 +78,8 @@ function chordPitchClasses(name) {
  *   6-3 5-2 4-0         string-fret single notes (one cell each)
  *   6-3+5-2             notes played together
  *   r                   rest
+ *   x                   brushing (a muted strum: no pitch)
+ *   6-0_  E5_           "_" = bridge mute (P.M.)
  *   ~:8                 tie: the previous note keeps ringing (across a bar line too)
  *   C*4                 the chord strummed 4 times in its bar
  *   C?  6-3?            judged loosely: any strum / note passes
@@ -82,6 +87,7 @@ function chordPitchClasses(name) {
  *   3-7b  3-7b1  3-7d   bend up a whole / half step (judged at the bent pitch) / release a pre-bent note (3-7d1 / 3-7d2: half / whole)
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  *   @16 ...             at the very start: use a 16th-note grid (@32: 32nd notes)
+ *   @capo3 ...          at the very start: capo on the 3rd fret (frets are counted from the capo)
  */
 function parseSongText(text, opts = {}) {
   const grid = opts.grid || 8, beats = (opts.timeSig || [4, 4])[0];
@@ -93,14 +99,16 @@ function parseSongText(text, opts = {}) {
     const items = [];
     for (const tok of bar.split(/\s+/).filter(Boolean)) {
       // a trailing "?" marks a step judged loosely (any strum or note passes)
-      const loose = /\?(:|$)/.test(tok);
-      let [body, lenStr] = tok.replace("?", "").split(":");
+      const loose = /\?(:|$)/.test(tok.replace("_", ""));
+      const pm = /_(\?)?(:|$)/.test(tok);
+      let [body, lenStr] = tok.replace("?", "").replace(/_(?=\??(:|$))/, "").split(":");
       const len = lenStr ? parseInt(lenStr, 10) : null;
       if (lenStr && !(len > 0)) { errors.push(`「${tok}」の長さが読めません`); continue; }
       if (/^[rR]$/.test(body)) { items.push({ notes: [], len: len || 1 }); continue; }
+      if (/^[xX]$/.test(body)) { items.push({ notes: [], brush: true, len: len || 1 }); continue; }
       // "~" holds the previous note on (a tie): nothing new to play, so wait mode skips it like a rest
       if (body === "~") { items.push({ notes: [], tie: true, len: len || 1 }); continue; }
-      const extra = loose ? { loose: true } : {};
+      const extra = { ...(loose ? { loose: true } : {}), ...(pm ? { pm: true } : {}) };
       // a technique letter after a single note: h p s (display only), b / b1 bend, d release
       const tech = /^\d-\d+(h|p|s|b[12]?|d[12]?)$/.exec(body);
       if (tech) {
@@ -153,9 +161,13 @@ function saveUserSongs(list) {
 }
 function allSongs() { return [...loadUserSongs(), ...PRESET_SONGS.map(s => ({ ...s, preset: true }))]; }
 function buildSong(s) {
-  // a leading "@16" in the text sets the grid (cells per whole note), so pasted text carries it
-  const m = /^\s*@(4|8|16|32)\b/.exec(s.text || "");
-  const timeSig = s.timeSig || [4, 4], grid = m ? +m[1] : s.grid || 8;
-  const text = m ? s.text.slice(m[0].length) : s.text;
-  return { ...s, timeSig, grid, ...parseSongText(text, { timeSig, grid }) };
+  // leading "@16" (grid: cells per whole note) and "@capo3" in the text, so pasted text carries them
+  let text = s.text || "", grid = s.grid || 8, capo = 0, m;
+  while ((m = /^\s*@(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text))) {
+    if (m[2] != null) capo = Math.min(12, +m[2]); else grid = +m[1];
+    text = text.slice(m[0].length);
+  }
+  const timeSig = s.timeSig || [4, 4], parsed = parseSongText(text, { timeSig, grid });
+  if (capo) parsed.steps.forEach(st => { st.capo = capo; });
+  return { ...s, timeSig, grid, capo, ...parsed };
 }

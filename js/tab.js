@@ -71,6 +71,7 @@ function renderTab(container, song, opts = {}) {
         const t = mk("text", { x: TAB.pad, y: y + 4, class: "tab-label" }, svg); t.textContent = STRING_LABELS[s];
       }
       for (const bx of [left, ...r.barEnds]) mk("line", { x1: bx, x2: bx, y1: TAB.top, y2: TAB.top + TAB.row * 5, class: "tab-bar" }, lines);
+      if (ri === 0 && song.capo) { const t = mk("text", { x: 4, y: 9, class: "tab-capo" }, svg); t.textContent = `Capo ${song.capo}`; }
       for (const i of r.steps) groups[i] = drawStep(svg, i);
       drawRhythm(svg, r.steps);
       rowEls.push(svg); frag.appendChild(svg);
@@ -101,6 +102,21 @@ function renderTab(container, song, opts = {}) {
         mk("line", { x1: x0, x2: x1, y1: up ? y + 5 : y - 5, y2: up ? y - 5 : y + 5, class: "tab-slur" }, g);
       }
     }
+    // bridge mute: "P.M." where a run starts (and at a new row), a dashed line on over the run
+    if (st.pm) {
+      const prev = song.steps[i - 1], next = song.steps[i + 1];
+      const first = !prev || !prev.pm || at[i - 1].row !== at[i].row;
+      if (first) { const t = mk("text", { x: cx - 10, y: 20, class: "tab-pm" }, g); t.textContent = "P.M."; }
+      const x1 = first ? cx + 18 : cx;
+      const x2 = next && next.pm && at[i + 1] && at[i + 1].row === at[i].row ? at[i + 1].x + Math.min(at[i + 1].w, TAB.minStep) / 2 : cx + 8;
+      if (x2 > x1) mk("line", { x1, x2, y1: 16, y2: 16, class: "tab-pmline" }, g);
+    }
+    // brushing: x on every string
+    if (st.brush) for (let s = 1; s <= 6; s++) {
+      const y = TAB.top + (s - 1) * TAB.row;
+      mk("rect", { x: cx - 9, y: y - 9, width: 18, height: 18, rx: 4, class: "tab-bg" }, g);
+      const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-x" }, g); t.textContent = "×";
+    }
     for (const [s, f] of st.notes) {
       const y = TAB.top + (s - 1) * TAB.row, label = String(f);
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
@@ -115,7 +131,7 @@ function renderTab(container, song, opts = {}) {
         mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
         const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-tie" }, g); t.textContent = label;
       }
-    } else if (!st.notes.length) drawRests(g, st.len, sx, w);
+    } else if (!st.notes.length && !st.brush) drawRests(g, st.len, sx, w);
     if (opts.onStepClick) g.addEventListener("click", () => opts.onStepClick(i));
     return g;
   }
@@ -200,12 +216,13 @@ function renderTab(container, song, opts = {}) {
     const restY = TAB.top + 3 * TAB.row + 4; // just under a rest symbol
     // stems start just under the lowest fret number of the step (a tie: the held note)
     const lowY = st => {
+      if (st.brush) return staffBottom + 10;
       const ns = st.notes.length ? st.notes : (st.tie && song.steps.slice(0, song.steps.indexOf(st)).reverse().find(x => x.notes.length) || { notes: [] }).notes;
       return TAB.top + (Math.max(...ns.map(n => n[0])) - 1) * TAB.row + 10;
     };
     const items = rowSteps.map(i => {
       const st = song.steps[i], v = noteValue(st), exact = Math.abs(v.base * (2 - 1 / 2 ** v.dots) - st.len * 4 / song.grid) < 1e-6;
-      if (st.notes.length || st.tie) return { i, x: xOf(i), v, top: lowY(st), note: true };
+      if (st.notes.length || st.tie || st.brush) return { i, x: xOf(i), v, top: lowY(st), note: true };
       // a rest shorter than a beat with a single symbol may sit under the beam of its beat
       return exact && v.base < 1 ? { i, x: xOf(i), v, top: restY, note: false } : null;
     });
@@ -288,8 +305,8 @@ function renderTab(container, song, opts = {}) {
   };
 }
 
-const stepLabel = st => st.chord || (st.tech === "b" ? `${noteName(OPEN_MIDI[st.notes[0][0]] + st.notes[0][1])}→${noteName(stepMidis(st)[0])}`
-  : st.notes.length ? st.notes.map(([s, f]) => noteName(OPEN_MIDI[s] + f)).join("+") : "休符");
+const stepLabel = st => st.brush ? "ブラッシング" : (st.chord || (st.tech === "b" ? `${noteName(OPEN_MIDI[st.notes[0][0]] + (st.capo || 0) + st.notes[0][1])}→${noteName(stepMidis(st)[0])}`
+  : st.notes.length ? stepMidis(st).map(noteName).join("+") : "休符")) + (st.pm ? "（P.M.）" : "");
 const stepWhere = st => st.chord ? "" : st.notes.map(([s, f]) => `${s}弦${f}フレット`).join("・")
   + (st.tech ? { h: "（ハンマリング）", p: "（プリング）", s: "（スライド）", d: "（チョーキングを戻す）",
     b: `（${st.bend === 1 ? "半音" : "1音"}チョーキング → ${noteName(stepMidis(st)[0])}）` }[st.tech] : "");

@@ -6,8 +6,9 @@
 function stepToken(st, withLen) {
   const len = withLen && st.len !== 1 ? ":" + st.len : "";
   if (st.tie) return "~" + len;
+  if (st.brush) return "x" + len;
   if (!st.notes.length) return "r" + len;
-  const q = st.loose ? "?" : "";
+  const q = (st.pm ? "_" : "") + (st.loose ? "?" : "");
   if (st.chord) return st.chord + q + len;
   const tech = st.tech ? st.tech + (st.tech === "b" && st.bend === 1 ? "1" : st.tech === "d" && st.bend ? st.bend : "") : "";
   return st.notes.map(([s, f]) => `${s}-${f}`).join("+") + tech + q + len;
@@ -112,6 +113,7 @@ function edRender() {
   edDrawCursor();
   edStatus();
   edShowPop();
+  if (!song.errors.length) $("edCapo").value = song.capo || 0;
   $("edUndo").disabled = !ed.undo.length;
   $("edRedo").disabled = !ed.redo.length;
   $("edSave").disabled = !n;
@@ -183,10 +185,11 @@ function edShowPop() {
   if (!ed.popOpen || !g || ed.play || ed.song.errors.length) { pop.hidden = true; return; }
   const i = ed.sel.i, st = ed.song.steps[i], s = ed.sel.s;
   const note = st.notes.length > 0 || !!st.tie || ed.noteDraft === i;
-  $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String((b.dataset.kind === "note") === note)));
-  $("popNote").hidden = !note;
-  $("popTech").hidden = !note;
-  $("popPlay").disabled = !st.notes.length;
+  const kind = st.brush && ed.noteDraft !== i ? "brush" : note ? "note" : "rest";
+  $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.kind === kind)));
+  $("popNote").hidden = kind !== "note";
+  $("popTech").hidden = kind !== "note";
+  $("popPlay").disabled = !isPlayed(st);
   $("popFrets").querySelectorAll(".fret-row").forEach(row => {
     const rs = +row.dataset.s, n = st.notes.find(x => x[0] === rs), f = n ? n[1] : -1;
     const range = row.querySelector("input");
@@ -198,6 +201,8 @@ function edShowPop() {
   if (document.activeElement !== $("popChord")) $("popChord").value = st.chord || "";
   $("popLoose").checked = !!st.loose;
   $("popLoose").disabled = !st.notes.length;
+  $("popPm").checked = !!st.pm;
+  $("popPm").disabled = !st.notes.length;
   const single = !st.chord && st.notes.length === 1;
   $("popTech").disabled = !single;
   $("popTech").value = single && st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(i) : "") : "";
@@ -225,20 +230,22 @@ function edSelect(i, s, open) {
 
 /* ----- edits ----- */
 // apply a change to a copy of the steps and write the result back as text
-// opts.grid: switch the song to a finer grid first (all lengths scaled); opts.merge: a key that makes
-// repeated changes of the same control (a slider being dragged) one undo step
+// opts.grid: switch the song to a finer grid first (all lengths scaled); opts.capo: a new capo fret;
+// opts.merge: a key that makes repeated changes of the same control (a slider being dragged) one undo step
 function edChange(fn, opts = {}) {
   if (ed.song.errors.length) return;
   let grid = ed.song.grid;
+  const capo = opts.capo ?? ed.song.capo;
   const steps = ed.song.steps.map(cloneStep);
-  let prefix = (/^\s*@(4|8|16|32)\b\s*/.exec(ed.text) || [""])[0];
   if (opts.grid && opts.grid > grid) {
     steps.forEach(st => { st.len *= opts.grid / grid; });
-    grid = opts.grid; prefix = `@${grid} `;
+    grid = opts.grid;
   }
   const sel = fn(steps, { ...ed.song, grid });
   if (sel === false) return;
-  edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix) : prefix.trim(), sel, opts.merge);
+  // the grid (when not the song's own) and the capo lead the text: "@16 @capo3 | ... |"
+  const prefix = [grid !== ed.grid ? `@${grid}` : "", capo ? `@capo${capo}` : ""].filter(Boolean).join(" ");
+  edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix ? prefix + " " : "") : prefix, sel, opts.merge);
 }
 
 function edSetText(text, sel, merge) {
@@ -266,14 +273,14 @@ function edUndo(redo) {
   edSaveDraft();
 }
 
-const asNotes = st => { delete st.chord; delete st.tie; };
+const asNotes = st => { delete st.chord; delete st.tie; delete st.brush; };
 function setFret(st, s, f) {
   asNotes(st);
   st.notes = st.notes.filter(n => n[0] !== s);
   if (f != null) st.notes.push([s, f]);
   st.notes.sort((a, b) => b[0] - a[0]);
   if (st.notes.length !== 1) { delete st.tech; delete st.bend; }
-  if (!st.notes.length) delete st.loose;
+  if (!st.notes.length) { delete st.loose; delete st.pm; }
 }
 const restStep = len => ({ notes: [], len });
 
@@ -343,6 +350,25 @@ function edRest() {
   if (!ed.sel) return;
   const { i } = ed.sel;
   edChange(steps => { steps[i] = restStep(steps[i].len); });
+}
+
+// brushing (muted strum, "x"); again turns it back into a rest
+function edBrush(toggle) {
+  if (!ed.sel) return;
+  const { i } = ed.sel;
+  ed.noteDraft = null;
+  edChange(steps => { const len = steps[i].len; steps[i] = toggle && steps[i].brush ? restStep(len) : { notes: [], brush: true, len }; });
+}
+
+// bridge mute ("_"), only on a sounding note or chord
+function edPm(on) {
+  if (!ed.sel || !ed.song.steps[ed.sel.i].notes.length) return;
+  const { i } = ed.sel;
+  edChange(steps => { if (on) steps[i].pm = true; else delete steps[i].pm; });
+}
+
+function edCapo(n) {
+  edChange(() => {}, { capo: n });
 }
 
 function edChord(name) {
@@ -489,12 +515,15 @@ $("popKind").addEventListener("click", e => {
   const b = e.target.closest("button");
   if (!b || !ed.sel) return;
   const st = ed.song.steps[ed.sel.i];
-  if (b.dataset.kind === "rest") { ed.noteDraft = null; if (st.notes.length || st.tie) edRest(); else edShowPop(); }
+  if (b.dataset.kind === "rest") { ed.noteDraft = null; if (isPlayed(st) || st.tie) edRest(); else edShowPop(); }
+  else if (b.dataset.kind === "brush") { if (!st.brush) edBrush(false); else { ed.noteDraft = null; edShowPop(); } }
   else { ed.noteDraft = ed.sel.i; edShowPop(); }
 });
 $("popTech").addEventListener("change", e => edTech(e.target.value, false));
 $("popLen").addEventListener("input", () => edLenValue(+$("popLen").value));
 $("popLoose").addEventListener("change", e => edLoose(e.target.checked));
+$("popPm").addEventListener("change", e => edPm(e.target.checked));
+$("edCapo").addEventListener("change", e => edCapo(+e.target.value));
 $("popChordSet").addEventListener("click", () => { edChord($("popChord").value.trim()); $("popChord").blur(); });
 $("popChord").addEventListener("keydown", e => {
   if (e.key === "Enter") { e.preventDefault(); edChord($("popChord").value.trim()); $("popChord").blur(); }
@@ -610,6 +639,8 @@ document.addEventListener("keydown", e => {
   else if (key === "d") { done(); edTech(e.shiftKey ? "d1" : "d2", true); }
   else if (key === "r") { done(); edRest(); }
   else if (key === "l") { done(); edLoose(!ed.song.steps[ed.sel.i].loose); }
+  else if (key === "x") { done(); edBrush(true); }
+  else if (key === "m") { done(); edPm(!ed.song.steps[ed.sel.i].pm); }
   else if (k === "[") { done(); edLenStep(-1); }
   else if (k === "]") { done(); edLenStep(1); }
   else if (key === "c") { done(); ed.popOpen = true; edShowPop(); $("popChord").focus(); $("popChord").select(); }
