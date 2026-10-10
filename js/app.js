@@ -42,3 +42,19 @@ showView(initialView);
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
+
+// iPhone Safari zooms on a double tap anywhere touch-action can't reach (text, the TAB drawing),
+// so a second tap within 350 ms is turned into a plain click instead of a zoom. Pinch zoom still works.
+{
+  let lastTap = 0;
+  document.addEventListener("touchend", e => {
+    const now = Date.now(), quick = now - lastTap < 350;
+    lastTap = now;
+    if (!quick || e.touches.length || e.changedTouches.length !== 1) return;
+    const t = e.target;
+    if (t.closest && t.closest("input, textarea, select, label")) return;
+    e.preventDefault();
+    const p = e.changedTouches[0];
+    t.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, clientX: p.clientX, clientY: p.clientY, screenX: p.screenX, screenY: p.screenY }));
+  }, { passive: false });
+}
