@@ -236,3 +236,4 @@ kbd { font-family: var(--f-mono); font-size: .8rem; border: 1px solid var(--line
 }
 @media (hover: none) { #edKeys { display: none; } }
 .inline-label { font-size: .88rem; color: var(--muted); }
+.ed-toolbar select { font: inherit; font-size: .88rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 6px; }

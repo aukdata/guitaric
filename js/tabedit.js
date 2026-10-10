@@ -327,7 +327,8 @@ function edPlay() {
   if (ctx.state === "suspended") ctx.resume();
   const from = ed.sel ? ed.sel.i : 0;
   const gain = ctx.createGain(); gain.gain.value = edVolume(); gain.connect(ctx.destination);
-  const bpm = Math.max(30, Math.min(240, +$("edBpm").value || 80));
+  // the song's tempo times the playback speed (0.2x ... 1.5x)
+  const bpm = Math.max(30, Math.min(240, +$("edBpm").value || 80)) * (+$("edRate").value || 1);
   const r = scheduleSong(ed.song, from, bpm, gain, i => {
     if (!ed.play) return;
     ed.play.cur = i;
@@ -492,12 +493,20 @@ document.querySelectorAll("[data-click]").forEach(b => b.addEventListener("click
   try { localStorage.setItem("guitaric.edClick", ed.click); } catch (e) {}
   edShowClick();
   // takes effect from where playback is now
-  if (ed.play) {
-    const { cur, from } = ed.play, s = ed.sel ? ed.sel.s : 1;
-    edStop(false); ed.sel = { i: cur, s }; edPlay(); ed.play.from = from;
-  }
+  edRestartPlay();
 }));
 edShowClick();
+// restart from the note being played, keeping where playback began
+function edRestartPlay() {
+  if (!ed.play) return;
+  const { cur, from } = ed.play, s = ed.sel ? ed.sel.s : 1;
+  edStop(false); ed.sel = { i: cur, s }; edPlay(); ed.play.from = from;
+}
+try { const r = localStorage.getItem("guitaric.edRate"); if (r) $("edRate").value = r; } catch (e) {}
+$("edRate").addEventListener("change", () => {
+  try { localStorage.setItem("guitaric.edRate", $("edRate").value); } catch (e) {}
+  edRestartPlay();
+});
 $("edUndo").addEventListener("click", () => edUndo(false));
 $("edRedo").addEventListener("click", () => edUndo(true));
 $("edAddBar").addEventListener("click", edAddBar);
