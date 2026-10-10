@@ -37,6 +37,7 @@ function renderTab(container, song, opts = {}) {
     mk("rect", { x: sx + 2, y: 4, width: w - 4, height: height - 8, rx: 6, class: "tab-hl" }, g);
     const cx = sx + Math.min(w, TAB.minStep) / 2;
     if (st.chord) { const t = mk("text", { x: cx, y: 20, class: "tab-chord" }, g); t.textContent = st.chord; }
+    else if (st.bend) { const t = mk("text", { x: cx, y: 20, class: "tab-chord" }, g); t.textContent = st.bend === "up" ? "↑full" : "↓"; }
     for (const [s, f] of st.notes) {
       const y = TAB.top + (s - 1) * TAB.row, label = String(f);
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
@@ -59,4 +60,5 @@ function renderTab(container, song, opts = {}) {
 }
 
 const stepLabel = st => st.chord || (st.notes.length ? st.notes.map(([s, f]) => noteName(OPEN_MIDI[s] + f)).join("+") : "休符");
-const stepWhere = st => st.chord ? "" : st.notes.map(([s, f]) => `${s}弦${f}フレット`).join("・");
+const stepWhere = st => st.chord ? "" : st.notes.map(([s, f]) => `${s}弦${f}フレット`).join("・")
+  + (st.bend ? (st.bend === "up" ? "（チョーキング）" : "（チョーキングを戻す）") : "");
