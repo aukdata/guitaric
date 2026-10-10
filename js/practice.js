@@ -4,7 +4,7 @@
 const JUDGE = { present: 0.2, extra: 0.3, extraNote: 0.25, extraSal: 0.8, okFrames: 2, wrongAfter: 0.9, settle: 0.12, settleSame: 0.2, minGap: 0.3 };
 const practice = {
   song: null, idx: 0, tab: null, stream: null, source: null, raf: 0,
-  tracker: createTracker(), okRun: 0, missRun: 0, fresh: true, silent: 0, wrongShown: false, sameAsPrev: false, ringing: [], strummed: false,
+  tracker: createTracker(), okRun: 0, missRun: 0, fresh: true, silent: 0, wrongShown: false, sameAsPrev: false, loose: false, lastOk: false, ringing: [], strummed: false,
   onsetDet: null, tap: null, tapOut: null, onsets: [], lastStrum: -1,
   firstTry: [], startedAt: 0, mutedUntil: 0, wakeLock: null
 };
@@ -56,13 +56,18 @@ function gotoStep(i) {
   if (i >= steps.length) { finishPractice(); return; }
   const prev = steps.slice(0, i).reverse().find(x => x.notes.length);
   practice.sameAsPrev = !!prev && soundKey(prev) === soundKey(steps[i]);
+  // the last strum before a chord change: the fretting hand is already moving to the next chord,
+  // so open strings and half-released notes are expected; any strum passes
+  const next = steps.slice(i + 1).find(x => x.notes.length);
+  practice.loose = !!steps[i].loose || (!!steps[i].chord && practice.sameAsPrev && !!next && soundKey(next) !== soundKey(steps[i]));
   practice.ringing = prev ? stepMidis(prev).map(m => m % 12) : [];
+  practice.last = null;
   practice.strummed = false;
   practice.tab.setState(i, "current");
   practice.tab.scrollTo(i);
   const st = steps[i];
   $("pTarget").textContent = stepLabel(st);
-  $("pWhere").textContent = stepWhere(st);
+  $("pWhere").textContent = practice.loose ? (st.loose ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : stepWhere(st);
   $("pProgress").textContent = `${i + 1} / ${steps.length}`;
   setFeedback(practice.stream ? "弾いてください" : "「マイクを開始」を押すと判定が始まります", "");
 }
@@ -86,7 +91,8 @@ function finishPractice() {
 // Is the expected step sounding? Returns { ok, missing } (missing = note names not heard).
 // A strum (or pluck) adds energy: either a big rise, or a clear rise with a strong spectral change.
 // Fret squeaks and finger noise on a ringing chord measure below this (checked on real recordings).
-const isStrum = o => o.rise >= 8 || (o.rise >= 2 && o.strength >= 0.06);
+// (thresholds from the real recordings: cannon.wav's 32 strums vs. its squeaks and finger noise)
+const isStrum = o => o.rise >= 8 || (o.rise >= 3 && o.strength >= 0.025) || (o.rise >= 2 && o.strength >= 0.06);
 
 const soundKey = st => st.chord ? (chordPitchClasses(st.chord) || []).slice().sort().join() : stepMidis(st).sort().join();
 
@@ -103,7 +109,9 @@ function judgeStep(st, res, tr, repeat, ringing) {
     // a tone outside the chord: a wrong fret or a string that should be muted
     // (tones of the previous step may still ring; they only count toward the overall ratio below)
     const extraPcs = ch.map((v, pc) => (!pcs.includes(pc) && !ringing.includes(pc) && v >= JUDGE.extraNote ? pc : -1)).filter(pc => pc >= 0);
-    const extra = ch.reduce((a, v, pc) => a + (pcs.includes(pc) ? 0 : v), 0) / total;
+    // the previous chord rings on for a while after a change; its tones don't count as foreign here
+    // (playing the old chord again still fails, because then the new chord's own tones are missing)
+    const extra = ch.reduce((a, v, pc) => a + (pcs.includes(pc) || ringing.includes(pc) ? 0 : v), 0) / total;
     const root = parseChordName(st.chord).pc;
     // four-note chords often lose their fifth; allow one missing tone except the root
     const allowed = pcs.length >= 4 ? 1 : 0;
@@ -124,6 +132,24 @@ function judgeStep(st, res, tr, repeat, ringing) {
   return { ok: missing.length === 0 && !extra.length, missing: missing.map(noteName), extra };
 }
 
+function showWrong(st, res, tr, j) {
+  practice.wrongShown = true;
+  if (!practice.startedAt) practice.startedAt = performance.now();
+  practice.firstTry[practice.idx] = false;
+  const heard = st.chord && tr.cands && tr.cands[0] ? tr.cands[0].name.replace("（単音）", "")
+    : res.notes.slice().sort((a, b) => b.salience - a.salience).slice(0, st.notes.length > 1 ? 3 : 1).map(n => noteName(n.midi)).join(" ");
+  const why = [j.missing.length ? `${j.missing.join("・")} が聞こえません` : "", j.extra.length ? `余計な音 ${j.extra.join("・")} が鳴っています` : ""].filter(Boolean).join("、");
+  setFeedback(`今鳴っているのは ${heard || "—"}` + (why ? `（${why}）` : ""), "ng");
+}
+
+function passStep() {
+  if (!practice.startedAt) practice.startedAt = performance.now();
+  practice.tab.setState(practice.idx, practice.firstTry[practice.idx] ? "done" : "done-retry");
+  practice.lastOk = false;
+  gotoStep(playableIndex(practice.idx + 1));
+  if (practice.idx < practice.song.steps.length) setFeedback("OK", "ok");
+}
+
 function practiceTick(buf) {
   const res = detectNotes(buf, ctx.sampleRate);
   const db = 20 * Math.log10(res.rms + 1e-9);
@@ -135,48 +161,45 @@ function practiceTick(buf) {
     if (o.t < practice.mutedUntil || o.t - practice.lastStrum < JUDGE.minGap || !isStrum(o)) continue;
     practice.lastStrum = o.t; strum = true;
   }
+  const steps = practice.song.steps;
+  // the current step already sounded right but hadn't been confirmed yet (a slow root like G2) when the
+  // next strum came: credit it now so the new strum counts for the next step instead of being used up
+  if (strum && practice.lastOk && practice.idx < steps.length) passStep();
+  // the previous strum on this step never passed and the player has moved on: say what was wrong
+  // (chords only: single notes pick up small noises between notes that are not real attempts)
+  else if (strum && practice.strummed && !practice.wrongShown && practice.last && practice.idx < steps.length && steps[practice.idx].chord)
+    showWrong(steps[practice.idx], practice.last.res, practice.last.tr, practice.last.j);
   if (strum) practice.tracker.markOnset();
   const tr = practice.tracker.update(res);
   if (res.notes.length) practice.silent = 0;
   else if (++practice.silent === 6) practice.tracker.reset();
+  practice.lastOk = false;
   if (ctx.currentTime < practice.mutedUntil) return;
-  const steps = practice.song.steps;
   if (practice.idx >= steps.length) return;
   const st = steps[practice.idx];
   if (strum) { practice.fresh = true; practice.okRun = 0; practice.strummed = true; practice.wrongShown = false; }
   // time since the attack itself (the onset event arrives ~0.1 s late, but carries its own time)
   const since = ctx.currentTime - practice.lastStrum;
-  const j = judgeStep(st, res, tr, practice.sameAsPrev, practice.ringing);
+  const j = practice.loose ? { ok: res.notes.length > 0, missing: [], extra: [] } : judgeStep(st, res, tr, practice.sameAsPrev, practice.ringing);
   if (j.ok) {
     practice.missRun = 0;
+    practice.lastOk = practice.fresh;
     // only a new attack counts, so a chord still ringing from the previous step can't pass the next one
     if (since < (practice.sameAsPrev ? JUDGE.settleSame : JUDGE.settle)) return;
-    if (practice.fresh && ++practice.okRun >= (practice.sameAsPrev ? 1 : JUDGE.okFrames)) {
-      if (!practice.startedAt) practice.startedAt = performance.now();
-      setFeedback("OK", "ok");
-      practice.tab.setState(practice.idx, practice.firstTry[practice.idx] ? "done" : "done-retry");
-      gotoStep(playableIndex(practice.idx + 1));
-      if (practice.idx < steps.length) setFeedback("OK", "ok");
-    }
+    if (practice.fresh && ++practice.okRun >= (practice.sameAsPrev ? 1 : JUDGE.okFrames)) passStep();
     return;
   }
   practice.okRun = 0;
   // the target is not sounding now, so the next time it appears it is a fresh attempt
-  // (not for a repeat: there the target never stops sounding, so only a new strum counts)
-  if (++practice.missRun >= 2 && !practice.sameAsPrev) practice.fresh = true;
+  // (only for single notes, where a soft hammer-on may not register as an attack; a chord always
+  // needs a strum: fingers landing on the next shape make sounds of their own)
+  if (++practice.missRun >= 2 && !practice.sameAsPrev && !st.chord) practice.fresh = true;
+  practice.last = { res, tr, j };
   // only a strum made while this step is current can be wrong (not the previous chord still ringing)
   // (a note held over from the previous step is not a mistake either: the new one may just be late)
   const loudest = res.notes.reduce((a, n) => (!a || n.salience > a.salience ? n : a), null);
   if (practice.strummed && !practice.wrongShown && loudest && since >= JUDGE.wrongAfter &&
-      !(!st.chord && practice.ringing.includes(loudest.midi % 12))) {
-    practice.wrongShown = true;
-    if (!practice.startedAt) practice.startedAt = performance.now();
-    practice.firstTry[practice.idx] = false;
-    const heard = st.chord && tr.cands && tr.cands[0] ? tr.cands[0].name.replace("（単音）", "")
-      : res.notes.slice().sort((a, b) => b.salience - a.salience).slice(0, st.notes.length > 1 ? 3 : 1).map(n => noteName(n.midi)).join(" ");
-    const why = [j.missing.length ? `${j.missing.join("・")} が聞こえません` : "", j.extra.length ? `余計な音 ${j.extra.join("・")} が鳴っています` : ""].filter(Boolean).join("、");
-    setFeedback(`今鳴っているのは ${heard}` + (why ? `（${why}）` : ""), "ng");
-  }
+      !(!st.chord && practice.ringing.includes(loudest.midi % 12))) showWrong(st, res, tr, j);
 }
 
 async function keepScreenOn() {

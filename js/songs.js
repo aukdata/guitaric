@@ -74,6 +74,8 @@ function chordPitchClasses(name) {
  *   6-3 5-2 4-0         string-fret single notes (one cell each)
  *   6-3+5-2             notes played together
  *   r                   rest
+ *   C*4                 the chord strummed 4 times in its bar
+ *   C?  6-3?            judged loosely: any strum / note passes
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note)
  */
 function parseSongText(text, opts = {}) {
@@ -85,26 +87,33 @@ function parseSongText(text, opts = {}) {
   for (const bar of (usesBars ? bars : [text])) {
     const items = [];
     for (const tok of bar.split(/\s+/).filter(Boolean)) {
-      const [body, lenStr] = tok.split(":");
+      // a trailing "?" marks a step judged loosely (any strum or note passes)
+      const loose = /\?(:|$)/.test(tok);
+      const [body, lenStr] = tok.replace("?", "").split(":");
       const len = lenStr ? parseInt(lenStr, 10) : null;
       if (lenStr && !(len > 0)) { errors.push(`「${tok}」の長さが読めません`); continue; }
       if (/^[rR]$/.test(body)) { items.push({ notes: [], len: len || 1 }); continue; }
+      const extra = loose ? { loose: true } : {};
       if (/^\d-\d+(\+\d-\d+)*$/.test(body)) {
         const notes = body.split("+").map(p => p.split("-").map(Number));
         const bad = notes.find(([s, f]) => s < 1 || s > 6 || f > 24);
         if (bad) { errors.push(`「${tok}」は弦1〜6・フレット0〜24で書いてください`); continue; }
-        items.push({ notes: notes.sort((a, b) => b[0] - a[0]), len: len || 1 });
+        items.push({ notes: notes.sort((a, b) => b[0] - a[0]), len: len || 1, ...extra });
         continue;
       }
-      const notes = chordVoicing(body);
+      // "C*4": the chord strummed 4 times, splitting its length
+      const [name, timesStr] = body.split("*");
+      const times = timesStr ? parseInt(timesStr, 10) : 1;
+      if (!(times >= 1 && times <= 16)) { errors.push(`「${tok}」の回数が読めません`); continue; }
+      const notes = chordVoicing(name);
       if (!notes) { errors.push(`「${tok}」はコード名としても音（弦-フレット）としても読めません`); continue; }
-      items.push({ notes, chord: body, len });
+      for (let k = 0; k < times; k++) items.push({ notes, chord: name, len: len ? Math.max(1, Math.round(len / times)) : null, split: times, ...extra });
     }
     // chords without an explicit length fill the bar (or a whole bar each when no bars are written)
     const open = items.filter(i => i.len == null);
     const used = items.reduce((a, i) => a + (i.len || 0), 0);
     const share = usesBars ? Math.max(1, Math.floor((barCells - used) / (open.length || 1))) : barCells;
-    for (const i of items) steps.push({ ...i, len: i.len ?? share });
+    for (const { split, ...i } of items) steps.push({ ...i, len: i.len ?? (usesBars ? share : Math.max(1, Math.round(barCells / (split || 1)))) });
   }
   return { steps, errors };
 }
@@ -112,6 +121,7 @@ function parseSongText(text, opts = {}) {
 const PRESET_SONGS = [
   { id: "preset-oudou", title: "王道進行", bpm: 80, text: "F G Em Am" },
   { id: "preset-canon", title: "カノン進行", bpm: 80, text: "C G Am Em F C F G" },
+  { id: "preset-canon4", title: "カノン進行（1小節4回）", bpm: 75, text: "C*4 G*4 Am*4 Em*4 F*4 C*4 F*4 G*4" },
   { id: "preset-minor", title: "マイナー進行", bpm: 80, text: "Am Dm E Am" },
   { id: "preset-change", title: "持ち替え練習 C⇔G", bpm: 70, text: "| C G | C G | Am F | C G |" },
   { id: "preset-scale", title: "Cメジャースケール", bpm: 70, text: "5-3 4-0 4-2 4-3 3-0 3-2 2-0 2-1 2-0 3-2 3-0 4-3 4-2 4-0 5-3:2" },
