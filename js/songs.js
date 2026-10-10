@@ -80,6 +80,7 @@ function chordPitchClasses(name) {
  *   4-7h  4-5p  5-5s    hammer-on / pull-off / slide into this note (shown on the TAB; the pitch is judged as usual)
  *   3-7b  3-7b1  3-7d   bend up a whole / half step (judged at the bent pitch) / release a pre-bent note
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
+ *   @16 ...             at the very start: use a 16th-note grid
  */
 function parseSongText(text, opts = {}) {
   const grid = opts.grid || 8, beats = (opts.timeSig || [4, 4])[0];
@@ -148,6 +149,9 @@ function saveUserSongs(list) {
 }
 function allSongs() { return [...loadUserSongs(), ...PRESET_SONGS.map(s => ({ ...s, preset: true }))]; }
 function buildSong(s) {
-  const timeSig = s.timeSig || [4, 4], grid = s.grid || 8;
-  return { ...s, timeSig, grid, ...parseSongText(s.text, { timeSig, grid }) };
+  // a leading "@16" in the text sets the grid (cells per whole note), so pasted text carries it
+  const m = /^\s*@(4|8|16)\b/.exec(s.text || "");
+  const timeSig = s.timeSig || [4, 4], grid = m ? +m[1] : s.grid || 8;
+  const text = m ? s.text.slice(m[0].length) : s.text;
+  return { ...s, timeSig, grid, ...parseSongText(text, { timeSig, grid }) };
 }
