@@ -237,3 +237,17 @@ kbd { font-family: var(--f-mono); font-size: .8rem; border: 1px solid var(--line
 @media (hover: none) { #edKeys { display: none; } }
 .inline-label { font-size: .88rem; color: var(--muted); }
 .ed-toolbar select { font: inherit; font-size: .88rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 6px; }
+
+/* the highlight behind the current / playing note lets the string lines show through */
+.tab-step[data-state="current"] .tab-hl, .tab-step[data-playing] .tab-hl { fill-opacity: .45; }
+
+/* ===== practice screen (same layout as the editor) ===== */
+.ed-title-text { font-weight: 700; font-size: 1.05rem; max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr .meter { flex: none; width: 90px; min-width: 0; }
+.pr-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: 2.2em; }
+.pr-status .feedback { margin: 0; flex: 1 1 200px; }
+.pr-status .target-where { min-height: 0; }
+.pr-status .stepper button { padding: 4px 12px; }
+.pr .result { margin: 0; }
+.pr .hint { margin-top: 4px; }
+@media (max-width: 720px) { .ed-title-text { max-width: 8em; } }

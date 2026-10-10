@@ -57,7 +57,6 @@ const ed = {
   loaded: false, id: null, grid: 8, text: "", saved: "",
   song: null, tab: null, sel: null, popOpen: false,
   undo: [], redo: [], digit: "", digitAt: 0, clip: null, play: null,
-  stopMode: (() => { try { return localStorage.getItem("guitaric.edStop") || "return"; } catch (e) { return "return"; } })()
 };
 
 const edSnapshot = () => JSON.stringify([$("edTitle").value.trim(), +$("edBpm").value || 80, ed.text]);
@@ -318,7 +317,6 @@ function edMove(di, ds) {
 }
 
 /* ----- playback ----- */
-function edVolume() { const v = +$("edVol").value; return v * v; }
 
 function edPlay() {
   if (ed.play) { edStop(false); return; }
@@ -326,40 +324,21 @@ function edPlay() {
   ensureContext();
   if (ctx.state === "suspended") ctx.resume();
   const from = ed.sel ? ed.sel.i : 0;
-  const gain = ctx.createGain(); gain.gain.value = edVolume(); gain.connect(ctx.destination);
+  const gain = ctx.createGain(); gain.gain.value = transportGain(); gain.connect(ctx.destination);
   // the song's tempo times the playback speed (0.2x ... 1.5x)
-  const bpm = Math.max(30, Math.min(240, +$("edBpm").value || 80)) * (+$("edRate").value || 1);
+  const bpm = Math.max(30, Math.min(240, +$("edBpm").value || 80)) * transport.rate;
   const r = scheduleSong(ed.song, from, bpm, gain, i => {
     if (!ed.play) return;
     ed.play.cur = i;
     if (ed.tab) { ed.tab.setPlaying(i); ed.tab.scrollTo(i); }
   });
   ed.play = { ...r, from, cur: from, gain };
-  edScheduleClicks(ed.song, from, bpm, r.start, gain);
+  scheduleSongClicks(ed.song, from, bpm, r.start, gain);
   ed.play.timers.push(setTimeout(() => edStop(true), (r.end - ctx.currentTime) * 1000));
   $("edPlay").textContent = "■"; $("edPlay").setAttribute("aria-label", "停止"); $("edPlay").classList.add("on");
   edRender();
 }
 
-// clicks on every quarter or eighth note while playing, the first beat of each bar accented
-function edScheduleClicks(song, from, bpm, start, out) {
-  const div = ed.click;
-  if (!div) return;
-  const cell = 60 / bpm * 4 / song.grid, every = Math.max(1, song.grid / div), barCells = song.timeSig[0] * song.grid / 4;
-  const cells = song.steps.map(st => st.len), fromCell = cells.slice(0, from).reduce((a, b) => a + b, 0);
-  const total = cells.reduce((a, b) => a + b, 0);
-  for (let c = Math.ceil(fromCell / every) * every; c < total; c += every) {
-    const t = start + (c - fromCell) * cell, accent = c % barCells === 0, beat = c % (song.grid / 4) === 0;
-    const osc = ctx.createOscillator(), g = ctx.createGain(), len = 0.025;
-    osc.frequency.value = accent ? 2000 : beat ? 1500 : 1200;
-    const peak = accent ? 0.9 : beat ? 0.6 : 0.35;
-    const curve = new Float32Array(32).map((_, i) => Math.sin(Math.PI * i / 31) ** 2 * peak);
-    g.gain.setValueAtTime(0, t);
-    g.gain.setValueCurveAtTime(curve, t, len);
-    osc.connect(g); g.connect(out);
-    osc.start(t); osc.stop(t + len + 0.01);
-  }
-}
 
 // natural: the song played to its end (its last note is left to ring out)
 function edStop(natural) {
@@ -370,7 +349,7 @@ function edStop(natural) {
   if (natural) setTimeout(() => p.gain.disconnect(), 2500);
   else { p.sources.forEach(src => { try { src.stop(); } catch (e) {} }); p.gain.disconnect(); }
   if (ed.tab) ed.tab.setPlaying(-1);
-  if (ed.sel) ed.sel = { i: ed.stopMode === "return" ? p.from : p.cur, s: ed.sel.s };
+  if (ed.sel) ed.sel = { i: transport.stopMode === "return" ? p.from : p.cur, s: ed.sel.s };
   $("edPlay").textContent = "▶"; $("edPlay").setAttribute("aria-label", "再生"); $("edPlay").classList.remove("on");
   if (ed.loaded) { edRender(); if (ed.tab && ed.sel) ed.tab.scrollTo(ed.sel.i); }
 }
@@ -389,8 +368,28 @@ function edSave() {
   edSaveDraft();
   edRender();
   edStatus("保存しました");
-  renderSongList(); fillSongSelect();
-  if (currentSongId() === entry.id) loadPractice(entry.id);
+  renderSongList();
+  if (practice.songId === entry.id && !practice.fromEditor) loadPractice(entry.id);
+}
+
+// 練習: practice this song; with unsaved changes, ask whether to save first
+function edPractice() {
+  edStop(false);
+  if (!edDirty() && ed.id) { openPractice(ed.id); return; }
+  if (!edDirty() && !ed.id) { edGoPractice(); return; }
+  const dlg = $("edLeaveDlg");
+  dlg.returnValue = "";
+  dlg.onclose = () => {
+    if (dlg.returnValue === "save") { edSave(); if (!edDirty()) openPractice(ed.id); }
+    else if (dlg.returnValue === "nosave") edGoPractice();
+  };
+  dlg.showModal();
+}
+// practice what the editor holds now, without saving it
+function edGoPractice() {
+  if (ed.song.errors.length || !ed.song.steps.length) { edStatus("練習できる音がありません"); return; }
+  loadPracticeSong({ title: $("edTitle").value.trim() || "無題の曲", bpm: +$("edBpm").value || 80, text: ed.text, grid: ed.grid }, true);
+  location.hash = "practice";
 }
 
 function edBack() {
@@ -398,7 +397,7 @@ function edBack() {
   edStop(false);
   ed.loaded = false;
   edClearDraft();
-  location.hash = "editor";
+  location.hash = "songs";
 }
 
 /* ----- text input (secondary) ----- */
@@ -466,46 +465,20 @@ new MutationObserver(() => { if (ed.sel && !$("edTab").querySelector(".tab-curso
 
 $("edBack").addEventListener("click", edBack);
 $("edSave").addEventListener("click", edSave);
+$("edPractice").addEventListener("click", edPractice);
 $("edTitle").addEventListener("input", () => { $("edSave").dataset.dirty = edDirty() ? "1" : ""; edSaveDraft(); });
 $("edBpm").addEventListener("input", () => { $("edSave").dataset.dirty = edDirty() ? "1" : ""; edSaveDraft(); });
 $("edPlay").addEventListener("click", edPlay);
 $("edHome").addEventListener("click", () => { if (ed.play) edStop(false); if (ed.song.steps.length) edSelect(0, ed.sel ? ed.sel.s : 1); });
-$("edVol").addEventListener("input", () => {
-  if (ed.play) ed.play.gain.gain.value = edVolume();
-  try { localStorage.setItem("guitaric.edVol", $("edVol").value); } catch (e) {}
-});
-try { const v = localStorage.getItem("guitaric.edVol"); if (v != null) $("edVol").value = v; } catch (e) {}
-function edShowStopMode() {
-  document.querySelectorAll("[data-stop]").forEach(b => b.setAttribute("aria-checked", String(b.dataset.stop === ed.stopMode)));
-}
-document.querySelectorAll("[data-stop]").forEach(b => b.addEventListener("click", () => {
-  ed.stopMode = b.dataset.stop;
-  try { localStorage.setItem("guitaric.edStop", ed.stopMode); } catch (e) {}
-  edShowStopMode();
-}));
-edShowStopMode();
-ed.click = (() => { try { return +(localStorage.getItem("guitaric.edClick") || 0); } catch (e) { return 0; } })();
-function edShowClick() {
-  document.querySelectorAll("[data-click]").forEach(b => b.setAttribute("aria-checked", String(+b.dataset.click === ed.click)));
-}
-document.querySelectorAll("[data-click]").forEach(b => b.addEventListener("click", () => {
-  ed.click = +b.dataset.click;
-  try { localStorage.setItem("guitaric.edClick", ed.click); } catch (e) {}
-  edShowClick();
-  // takes effect from where playback is now
-  edRestartPlay();
-}));
-edShowClick();
 // restart from the note being played, keeping where playback began
 function edRestartPlay() {
   if (!ed.play) return;
   const { cur, from } = ed.play, s = ed.sel ? ed.sel.s : 1;
   edStop(false); ed.sel = { i: cur, s }; edPlay(); ed.play.from = from;
 }
-try { const r = localStorage.getItem("guitaric.edRate"); if (r) $("edRate").value = r; } catch (e) {}
-$("edRate").addEventListener("change", () => {
-  try { localStorage.setItem("guitaric.edRate", $("edRate").value); } catch (e) {}
-  edRestartPlay();
+transport.listeners.push(key => {
+  if (key === "vol" && ed.play) ed.play.gain.gain.value = transportGain();
+  if (key === "click" || key === "rate") edRestartPlay();
 });
 $("edUndo").addEventListener("click", () => edUndo(false));
 $("edRedo").addEventListener("click", () => edUndo(true));

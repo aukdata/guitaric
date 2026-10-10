@@ -51,7 +51,7 @@ async function importFiles(files) {
     } catch (e) { problems.push(`${f.name}：${e.message}`); }
   }
   if (added.length && !saveUserSongs(mine)) { $("eFileMsg").textContent = "このブラウザでは保存できませんでした"; return; }
-  renderSongList(); fillSongSelect();
+  renderSongList();
   const msg = [added.length ? `${added.length}曲を読み込みました` : "", skipped ? `${skipped}曲は保存済みのため省きました` : "", ...problems].filter(Boolean);
   $("eFileMsg").textContent = msg.join(" / ") || "読み込める曲がありませんでした";
 }

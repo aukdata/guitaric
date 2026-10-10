@@ -7,8 +7,8 @@ function renderSongList() {
     const row = document.createElement("div"); row.className = "song-row";
     const name = document.createElement("span"); name.className = "song-title"; name.textContent = s.title;
     if (s.preset) { const tag = document.createElement("small"); tag.textContent = "練習用"; name.append(tag); }
-    const play = document.createElement("button"); play.type = "button"; play.textContent = "練習する";
-    play.addEventListener("click", () => { setCurrentSongId(s.id); fillSongSelect(); loadPractice(s.id); location.hash = "practice"; });
+    const play = document.createElement("button"); play.type = "button"; play.textContent = "練習";
+    play.addEventListener("click", () => openPractice(s.id));
     const edit = document.createElement("button"); edit.type = "button"; edit.textContent = s.preset ? "コピーして編集" : "編集";
     edit.addEventListener("click", () => openEditor(s.preset ? { ...s, id: null, title: s.title + "（コピー）" } : s));
     const exp = document.createElement("button"); exp.type = "button"; exp.textContent = "書き出す";
@@ -20,7 +20,8 @@ function renderSongList() {
       del.addEventListener("click", () => {
         if (!confirm(`「${s.title}」を削除しますか？`)) return;
         saveUserSongs(loadUserSongs().filter(x => x.id !== s.id));
-        renderSongList(); fillSongSelect(); loadPractice($("pSong").value);
+        renderSongList();
+        if (practice.songId === s.id) loadPractice(null);
       });
       row.append(del);
     }

@@ -21,65 +21,62 @@
   <header class="appbar">
     <h1>GUITARIC</h1>
     <nav class="tabs" aria-label="モード">
-      <button type="button" class="tab" data-view="practice">練習</button>
-      <button type="button" class="tab" data-view="editor">曲を作る</button>
+      <button type="button" class="tab" data-view="songs">曲</button>
       <button type="button" class="tab" data-view="analyze">解析</button>
     </nav>
   </header>
 
-  <main id="view-practice" class="view" hidden>
-    <section class="panel controls" aria-label="練習の操作">
-      <select id="pSong" aria-label="練習する曲"></select>
-      <button id="pMic" class="primary" type="button"><span class="dot"></span>マイクを開始</button>
-      <button id="pModel" type="button">お手本</button>
-      <button id="pRestart" type="button">はじめから</button>
-      <div class="meter" aria-label="入力レベル"><i id="pMeter"></i></div>
-    </section>
-
-    <section class="panel controls metro" aria-label="クリック">
-      <button id="mToggle" type="button" aria-pressed="false">クリック</button>
-      <label class="inline">BPM <input id="mBpm" type="number" min="20" max="300" value="80" inputmode="numeric"></label>
-      <label class="inline">速さ
-        <select id="mRate">
-          <option value="0.5">0.5倍</option><option value="0.75">0.75倍</option>
-          <option value="1" selected>1倍</option><option value="1.25">1.25倍</option>
-        </select>
-      </label>
-      <span id="mEff" class="eff"></span>
-      <span id="mDots" class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-      <label class="inline vol">音量 <input id="mVol" type="range" min="0.05" max="1" step="0.05" value="0.5"></label>
-    </section>
-
-    <section class="panel target" aria-live="polite">
-      <div class="target-row">
-        <div>
-          <h2>次に弾く</h2>
-          <div id="pTarget" class="target-name">—</div>
-          <div id="pWhere" class="target-where"></div>
-        </div>
-        <div class="target-side">
-          <span id="pProgress" class="progress">0 / 0</span>
-          <div class="stepper">
-            <button id="pPrev" type="button" aria-label="前へ">◀</button>
-            <button id="pNext" type="button" aria-label="とばす">▶</button>
-          </div>
-        </div>
+  <main id="view-practice" class="view ed pr" hidden>
+    <div class="ed-toolbar" role="toolbar" aria-label="練習の操作">
+      <div class="ed-group">
+        <button id="prBack" type="button" title="曲の一覧に戻る">← 一覧</button>
+        <span id="prTitle" class="ed-title-text"></span>
+        <button id="prEdit" type="button" title="この曲を編集する">編集</button>
       </div>
-      <p id="pFeedback" class="feedback"></p>
-      <div id="pResult" class="result" hidden>
-        <p id="pResultText"></p>
-        <button id="pAgain" type="button" class="primary">もう一度</button>
+      <div class="ed-group">
+        <button id="pMic" class="primary" type="button"><span class="dot"></span>マイクを開始</button>
+        <div class="meter" aria-label="入力レベル"><i id="pMeter"></i></div>
+        <button id="pRestart" type="button">はじめから</button>
       </div>
-    </section>
-
-    <section class="panel">
-      <h2>TAB譜</h2>
-      <div id="pTab" class="tab-scroll"></div>
-      <p class="hint">正しく弾けると次へ進みます。マスをタップするとそこから練習できます。</p>
-    </section>
+      <div class="ed-group">
+        <button id="prHome" type="button" class="icon" title="先頭へ" aria-label="先頭へ">⏮</button>
+        <button id="pModel" type="button" class="icon play" title="お手本を再生 / 停止（Space）" aria-label="お手本を再生">▶</button>
+        <div class="seg" role="radiogroup" aria-label="停止したとき">
+          <button type="button" role="radio" data-stop="stay" title="停止した位置にカーソルを置く">止めた位置</button>
+          <button type="button" role="radio" data-stop="return" title="再生を始めた位置にカーソルを戻す">開始位置へ戻る</button>
+        </div>
+        <span class="inline-label">クリック</span>
+        <div class="seg" role="radiogroup" aria-label="再生中のクリック">
+          <button type="button" role="radio" data-click="0">なし</button>
+          <button type="button" role="radio" data-click="4">4分</button>
+          <button type="button" role="radio" data-click="8">8分</button>
+        </div>
+        <label class="inline">BPM<input id="prBpm" type="number" min="30" max="240" value="80" inputmode="numeric"></label>
+        <label class="inline">速さ<select class="t-rate" aria-label="再生速度">
+          <option value="0.2">0.2倍</option><option value="0.3">0.3倍</option><option value="0.5">0.5倍</option><option value="0.7">0.7倍</option>
+          <option value="0.75">0.75倍</option><option value="1" selected>1倍</option><option value="1.25">1.25倍</option><option value="1.5">1.5倍</option>
+        </select></label>
+        <label class="inline vol">音量<input class="t-vol" type="range" min="0" max="1" step="0.05" value="0.7" aria-label="音量"></label>
+      </div>
+    </div>
+    <div class="pr-status" aria-live="polite">
+      <span id="pProgress" class="progress">0 / 0</span>
+      <span id="pFeedback" class="feedback"></span>
+      <span id="pWhere" class="target-where"></span>
+      <span class="stepper">
+        <button id="pPrev" type="button" aria-label="前の音へ" title="前の音へ（←）">◀</button>
+        <button id="pNext" type="button" aria-label="とばす" title="とばす（→）">▶</button>
+      </span>
+    </div>
+    <div id="pResult" class="result" hidden>
+      <p id="pResultText"></p>
+      <button id="pAgain" type="button" class="primary">もう一度</button>
+    </div>
+    <div id="pTab" class="tab-scroll"></div>
+    <p class="hint">マイクを開始して弾くと、正しく弾けた音から進みます。音をクリックするとそこから練習できます。クリック音はマイク中とお手本の再生中に鳴ります。</p>
   </main>
 
-  <main id="view-editor" class="view" hidden>
+  <main id="view-songs" class="view" hidden>
     <section class="panel">
       <div class="editor-head">
         <h2>曲の一覧</h2>
@@ -100,6 +97,7 @@
         <button id="edBack" type="button" title="曲の一覧に戻る">← 一覧</button>
         <input id="edTitle" class="ed-title" type="text" placeholder="無題の曲" aria-label="タイトル">
         <button id="edSave" type="button" class="primary" title="保存（Ctrl+S）">保存</button>
+        <button id="edPractice" type="button" title="この曲を練習する">練習</button>
       </div>
       <div class="ed-group">
         <button id="edHome" type="button" class="icon" title="先頭へ（Home）" aria-label="先頭へ">⏮</button>
@@ -115,11 +113,11 @@
           <button type="button" role="radio" data-click="8">8分</button>
         </div>
         <label class="inline">BPM<input id="edBpm" type="number" min="30" max="240" value="80" inputmode="numeric"></label>
-        <label class="inline">速さ<select id="edRate" aria-label="再生速度">
+        <label class="inline">速さ<select class="t-rate" aria-label="再生速度">
           <option value="0.2">0.2倍</option><option value="0.3">0.3倍</option><option value="0.5">0.5倍</option><option value="0.7">0.7倍</option>
           <option value="0.75">0.75倍</option><option value="1" selected>1倍</option><option value="1.25">1.25倍</option><option value="1.5">1.5倍</option>
         </select></label>
-        <label class="inline vol">音量<input id="edVol" type="range" min="0" max="1" step="0.05" value="0.7"></label>
+        <label class="inline vol">音量<input class="t-vol" type="range" min="0" max="1" step="0.05" value="0.7" aria-label="音量"></label>
       </div>
       <div class="ed-group">
         <button id="edUndo" type="button" class="icon" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶</button>
@@ -174,6 +172,18 @@
         <div class="dlg-actions">
           <button value="cancel" type="submit">キャンセル</button>
           <button id="edTextApply" type="button" class="primary">反映</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="edLeaveDlg" class="ed-dlg">
+      <form method="dialog">
+        <h2>保存していない変更があります</h2>
+        <p>練習に移る前に保存しますか？「保存せずに練習」を選ぶと、今の内容のまま練習できます（曲は保存されません）。</p>
+        <div class="dlg-actions">
+          <button value="cancel" type="submit">キャンセル</button>
+          <button value="nosave" type="submit">保存せずに練習</button>
+          <button value="save" type="submit" class="primary">保存して練習</button>
         </div>
       </form>
     </dialog>
@@ -261,8 +271,8 @@
 <script src="js/songs.js"></script>
 <script src="js/tab.js"></script>
 <script src="js/analyze.js"></script>
-<script src="js/metronome.js"></script>
 <script src="js/player.js"></script>
+<script src="js/metronome.js"></script>
 <script src="js/practice.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/tabedit.js"></script>

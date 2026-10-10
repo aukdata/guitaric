@@ -6,35 +6,38 @@ const practice = {
   song: null, idx: 0, tab: null, stream: null, source: null, raf: 0,
   tracker: createTracker(), okRun: 0, missRun: 0, fresh: true, silent: 0, wrongShown: false, sameAsPrev: false, loose: false, lastOk: false, ringing: [], strummed: false,
   onsetDet: null, tap: null, tapOut: null, onsets: [], lastStrum: -1,
-  firstTry: [], startedAt: 0, mutedUntil: 0, wakeLock: null
+  marks: [], firstTry: [], startedAt: 0, mutedUntil: 0, wakeLock: null
 };
-const model = { sources: [], timers: [] };
+const model = { sources: [], timers: [], gain: null, from: null, cur: 0 };
 
 function currentSongId() { try { return localStorage.getItem("guitaric.song"); } catch (e) { return null; } }
 function setCurrentSongId(id) { try { localStorage.setItem("guitaric.song", id); } catch (e) {} }
 
-function fillSongSelect() {
-  const sel = $("pSong"), songs = allSongs(), cur = currentSongId();
-  sel.innerHTML = "";
-  const groups = [["自分の曲", songs.filter(s => !s.preset)], ["練習用", songs.filter(s => s.preset)]];
-  for (const [label, list] of groups) {
-    if (!list.length) continue;
-    const og = document.createElement("optgroup"); og.label = label;
-    for (const s of list) { const o = document.createElement("option"); o.value = s.id; o.textContent = s.title; og.append(o); }
-    sel.append(og);
-  }
-  sel.value = songs.some(s => s.id === cur) ? cur : songs[0].id;
-}
-
+// practice a saved song by id (falls back to the first song)
 function loadPractice(id) {
   const s = allSongs().find(x => x.id === id) || allSongs()[0];
   setCurrentSongId(s.id);
+  loadPracticeSong(s, false);
+}
+
+// practice a song object; fromEditor = the editor's unsaved content (編集 goes back to that draft)
+function loadPracticeSong(s, fromEditor) {
   if (model.sources.length) stopModel();
+  practice.fromEditor = fromEditor;
+  practice.songId = fromEditor ? null : s.id;
   practice.song = buildSong(s);
-  practice.tab = renderTab($("pTab"), practice.song, { onStepClick: i => gotoStep(i) });
+  practice.tab = renderTab($("pTab"), practice.song, { onStepClick: i => { if (model.sources.length) stopModel(); gotoStep(i); } });
+  $("prTitle").textContent = (s.title || "無題の曲") + (fromEditor ? "（未保存）" : "");
   setMetroSong(practice.song);
   restartPractice();
 }
+
+function openPractice(id) {
+  loadPractice(id);
+  location.hash = "practice";
+}
+
+function markStep(k, state) { practice.marks[k] = state; practice.tab.setState(k, state); }
 
 function playableIndex(i) {
   const steps = practice.song.steps;
@@ -46,13 +49,14 @@ function restartPractice() {
   practice.firstTry = practice.song.steps.map(() => true);
   practice.startedAt = 0;
   $("pResult").hidden = true;
-  practice.tab.clearStates();
+  practice.tab.clearStates(); practice.marks = [];
   gotoStep(playableIndex(0));
 }
 
 function gotoStep(i) {
   const steps = practice.song.steps;
-  for (let k = 0; k < steps.length; k++) if (k >= i) practice.tab.setState(k, "");
+  // steps from here on are unplayed again; a step left "current" by jumping ahead is cleared too
+  for (let k = 0; k < steps.length; k++) if (k >= i || practice.marks[k] === "current") markStep(k, "");
   practice.idx = i;
   practice.okRun = 0; practice.missRun = 0; practice.fresh = false;
   if (i >= steps.length) { finishPractice(); return; }
@@ -65,11 +69,10 @@ function gotoStep(i) {
   practice.ringing = prev ? stepMidis(prev).map(m => m % 12) : [];
   practice.last = null;
   practice.strummed = false;
-  practice.tab.setState(i, "current");
+  markStep(i, "current");
   practice.tab.scrollTo(i);
   const st = steps[i];
-  $("pTarget").textContent = stepLabel(st);
-  $("pWhere").textContent = practice.loose ? (st.loose ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : stepWhere(st);
+  $("pWhere").textContent = practice.loose ? (st.loose ? "判定ゆるめ" : "コードチェンジ前（判定ゆるめ）") : "";
   $("pProgress").textContent = `${i + 1} / ${steps.length}`;
   setFeedback(practice.stream ? "弾いてください" : "「マイクを開始」を押すと判定が始まります", "");
 }
@@ -82,7 +85,6 @@ function finishPractice() {
   const steps = practice.song.steps, idxs = steps.map((s, i) => i).filter(i => steps[i].notes.length);
   const first = idxs.filter(i => practice.firstTry[i]).length;
   const secs = practice.startedAt ? (performance.now() - practice.startedAt) / 1000 : 0;
-  $("pTarget").textContent = "完了";
   $("pWhere").textContent = "";
   $("pProgress").textContent = `${steps.length} / ${steps.length}`;
   setFeedback("最後まで弾けました", "ok");
@@ -149,7 +151,7 @@ function showWrong(st, res, tr, j) {
 
 function passStep() {
   if (!practice.startedAt) practice.startedAt = performance.now();
-  practice.tab.setState(practice.idx, practice.firstTry[practice.idx] ? "done" : "done-retry");
+  markStep(practice.idx, practice.firstTry[practice.idx] ? "done" : "done-retry");
   practice.lastOk = false;
   gotoStep(playableIndex(practice.idx + 1));
   if (practice.idx < practice.song.steps.length) setFeedback("OK", "ok");
@@ -240,6 +242,7 @@ async function startPracticeMic() {
   $("pMic").innerHTML = '<span class="dot"></span>マイクを停止';
   $("pMic").classList.remove("primary");
   setFeedback("弾いてください", "");
+  updateMetronome();
   await keepScreenOn();
   const buf = new Float32Array(FFT_SIZE);
   let last = 0;
@@ -262,35 +265,58 @@ function stopPracticeMic() {
   $("pMic").innerHTML = '<span class="dot"></span>マイクを開始';
   $("pMic").classList.add("primary");
   $("pMeter").style.width = "0%";
+  updateMetronome();
 }
 
 // (model = the sources and timers of the playback in progress, declared at the top)
-// Plays the whole song at the metronome tempo, highlighting each step as it sounds.
+// Plays the song from the current step at the practice tempo, highlighting each step as it sounds.
 // Judging pauses meanwhile so the speaker can't pass steps; pressing again stops it.
+// On stop the practice position goes back to where playback began, or to where it stopped.
 
-function stopModel() {
-  model.sources.forEach(src => { try { src.stop(); } catch (e) {} });
+function stopModel(natural) {
+  const wasPlaying = model.sources.length > 0;
+  if (!natural) model.sources.forEach(src => { try { src.stop(); } catch (e) {} });
   model.timers.forEach(clearTimeout);
-  model.sources = []; model.timers = [];
-  if (practice.tab) { practice.tab.setPlaying(-1); practice.tab.scrollTo(practice.idx); }
-  practice.mutedUntil = Math.min(practice.mutedUntil, ctx ? ctx.currentTime : 0);
+  if (model.gain) { const g = model.gain; if (natural) setTimeout(() => g.disconnect(), 2500); else g.disconnect(); }
+  model.sources = []; model.timers = []; model.gain = null;
+  if (practice.tab) practice.tab.setPlaying(-1);
+  if (wasPlaying && model.from != null && practice.song) {
+    const to = transport.stopMode === "return" ? model.from : playableIndex(model.cur);
+    if (to !== practice.idx && to < practice.song.steps.length) gotoStep(to);
+    else if (practice.tab) practice.tab.scrollTo(practice.idx);
+  }
+  practice.mutedUntil = natural ? practice.mutedUntil : Math.min(practice.mutedUntil, ctx ? ctx.currentTime : 0);
   practice.tracker.reset();
-  $("pModel").textContent = "お手本";
+  $("pModel").textContent = "▶"; $("pModel").setAttribute("aria-label", "お手本を再生"); $("pModel").classList.remove("on");
+  updateMetronome();
 }
 
 function playModel() {
   ensureContext();
+  if (ctx.state === "suspended") ctx.resume();
   if (model.sources.length) { stopModel(); return; }
-  const r = scheduleSong(practice.song, 0, effectiveBpm(), ctx.destination, i => { practice.tab.setPlaying(i); practice.tab.scrollTo(i); });
-  model.sources = r.sources; model.timers = r.timers;
+  const from = Math.min(practice.idx, practice.song.steps.length - 1), bpm = effectiveBpm();
+  stopMetronome();
+  const gain = ctx.createGain(); gain.gain.value = transportGain(); gain.connect(ctx.destination);
+  const r = scheduleSong(practice.song, from, bpm, gain, i => { model.cur = i; practice.tab.setPlaying(i); practice.tab.scrollTo(i); });
+  scheduleSongClicks(practice.song, from, bpm, r.start, gain);
+  model.sources = r.sources; model.timers = r.timers; model.gain = gain; model.from = from; model.cur = from;
   const end = r.end + 1.6;
-  model.timers.push(setTimeout(stopModel, (end - ctx.currentTime) * 1000));
+  model.timers.push(setTimeout(() => stopModel(true), (r.end - ctx.currentTime) * 1000));
   practice.mutedUntil = end + 0.2;
   practice.tracker.reset();
-  $("pModel").textContent = "停止";
+  $("pModel").textContent = "■"; $("pModel").setAttribute("aria-label", "停止"); $("pModel").classList.add("on");
 }
 
-$("pSong").addEventListener("change", e => loadPractice(e.target.value));
+transport.listeners.push(key => {
+  if (key === "vol" && model.gain) model.gain.gain.value = transportGain();
+  // restart the playback with the new speed or click from the step being played
+  if ((key === "rate" || key === "click") && model.sources.length) {
+    const from = model.from, cur = model.cur;
+    model.from = null; stopModel(); gotoStep(cur); playModel(); model.from = from;
+  }
+});
+
 $("pMic").addEventListener("click", () => (practice.stream ? stopPracticeMic() : startPracticeMic()));
 $("pRestart").addEventListener("click", restartPractice);
 $("pAgain").addEventListener("click", restartPractice);
@@ -302,7 +328,7 @@ $("pPrev").addEventListener("click", () => {
 $("pNext").addEventListener("click", () => {
   if (practice.idx >= practice.song.steps.length) return;
   practice.firstTry[practice.idx] = false;
-  practice.tab.setState(practice.idx, "skipped");
+  markStep(practice.idx, "skipped");
   gotoStep(playableIndex(practice.idx + 1));
 });
 $("pModel").addEventListener("click", playModel);
@@ -310,6 +336,7 @@ document.addEventListener("keydown", e => {
   if ($("view-practice").hidden || e.target.closest("input, textarea, select")) return;
   if (e.key === "ArrowRight") $("pNext").click();
   else if (e.key === "ArrowLeft") $("pPrev").click();
+  else if (e.key === " ") { e.preventDefault(); playModel(); }
 });
 document.addEventListener("visibilitychange", async () => {
   if (practice.stream && document.visibilityState === "visible" && !practice.wakeLock) {
@@ -317,5 +344,16 @@ document.addEventListener("visibilitychange", async () => {
   }
 });
 
-fillSongSelect();
-loadPractice($("pSong").value);
+$("prHome").addEventListener("click", () => { if (model.sources.length) stopModel(); gotoStep(playableIndex(0)); });
+$("prBack").addEventListener("click", () => { location.hash = "songs"; });
+// 編集: back to the editor's draft when practicing it, else open this song in the editor
+$("prEdit").addEventListener("click", () => {
+  if (practice.fromEditor) { location.hash = "edit"; return; }
+  const s = allSongs().find(x => x.id === practice.songId);
+  if (!s) return;
+  if (ed.loaded && ed.id === s.id && !s.preset) { location.hash = "edit"; return; }
+  openEditor(s.preset ? { ...s, id: null, title: s.title + "（コピー）" } : s);
+});
+$("prBpm").addEventListener("input", () => updateMetronome(true));
+
+loadPractice(currentSongId());
