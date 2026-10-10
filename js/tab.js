@@ -105,7 +105,7 @@ function renderTab(container, song, opts = {}) {
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret" }, g); t.textContent = label;
     }
-    if (st.tech === "b" || st.tech === "d") drawBend(g, st, cx);
+    if (st.tech === "b" || st.tech === "d") drawBend(g, st, cx, i);
     const held = st.tie && song.steps.slice(0, i).reverse().find(x => x.notes.length);
     if (held) {
       // a tie shows the held frets in parentheses
@@ -119,17 +119,24 @@ function renderTab(container, song, opts = {}) {
     return g;
   }
 
-  // standard TAB bend marks: a curved arrow up from the fret to "full" / "1/2" above the staff,
-  // and for a release a curved arrow coming back down onto the fret
-  function drawBend(g, st, cx) {
+  // standard TAB bend marks: a curved arrow up from the fret to "full" / "1/2" above the staff;
+  // a release starts bent, so it gets a straight arrow up to "full" / "1/2" and a curved arrow back down
+  function drawBend(g, st, cx, i) {
     const y = TAB.top + (st.notes[0][0] - 1) * TAB.row, ax = cx + 20, tip = 16;
     const head = (x, yy, up) => mk("path", { d: up ? `M${x} ${yy} l-3.5 7 h7 z` : `M${x} ${yy} l-3.5 -7 h7 z`, class: "tab-arrowhead" }, g);
+    const label = (x, amount) => { const t = mk("text", { x, y: tip - 4, class: "tab-bendlabel" }, g); t.textContent = amount === 1 ? "1/2" : "full"; };
     if (st.tech === "b") {
       mk("path", { d: `M${cx + 9} ${y - 1} Q${ax} ${y - 1} ${ax} ${tip + 6}`, class: "tab-arrow" }, g);
       head(ax, tip, true);
-      const t = mk("text", { x: ax, y: tip - 4, class: "tab-bendlabel" }, g); t.textContent = st.bend === 1 ? "1/2" : "full";
+      label(ax, st.bend);
     } else {
-      mk("path", { d: `M${cx - 2} ${tip} Q${ax} ${tip} ${ax} ${y - 15}`, class: "tab-arrow" }, g);
+      // the bend amount comes from the bend this releases (same string and fret), else a whole step
+      const [s, f] = st.notes[0];
+      const from = song.steps.slice(0, i).reverse().find(x => x.tech === "b" && x.notes[0][0] === s && x.notes[0][1] === f);
+      mk("line", { x1: cx, x2: cx, y1: y - 10, y2: tip + 6, class: "tab-arrow" }, g);
+      head(cx, tip, true);
+      label(cx, from ? from.bend : 2);
+      mk("path", { d: `M${cx + 3} ${tip + 2} Q${ax} ${tip + 2} ${ax} ${y - 15}`, class: "tab-arrow" }, g);
       head(ax, y - 9, false);
     }
   }
