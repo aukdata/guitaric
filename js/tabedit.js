@@ -335,7 +335,7 @@ function edPlay() {
   ed.play = { ...r, from, cur: from, gain };
   scheduleSongClicks(ed.song, from, bpm, r.start, gain);
   ed.play.timers.push(setTimeout(() => edStop(true), (r.end - ctx.currentTime) * 1000));
-  $("edPlay").textContent = "■"; $("edPlay").setAttribute("aria-label", "停止"); $("edPlay").classList.add("on");
+  setIcon($("edPlay"), "square"); $("edPlay").setAttribute("aria-label", "停止"); $("edPlay").classList.add("on");
   edRender();
 }
 
@@ -350,7 +350,7 @@ function edStop(natural) {
   else { p.sources.forEach(src => { try { src.stop(); } catch (e) {} }); p.gain.disconnect(); }
   if (ed.tab) ed.tab.setPlaying(-1);
   if (ed.sel) ed.sel = { i: transport.stopMode === "return" ? p.from : p.cur, s: ed.sel.s };
-  $("edPlay").textContent = "▶"; $("edPlay").setAttribute("aria-label", "再生"); $("edPlay").classList.remove("on");
+  setIcon($("edPlay"), "play"); $("edPlay").setAttribute("aria-label", "再生"); $("edPlay").classList.remove("on");
   if (ed.loaded) { edRender(); if (ed.tab && ed.sel) ed.tab.scrollTo(ed.sel.i); }
 }
 

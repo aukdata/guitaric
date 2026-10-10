@@ -287,7 +287,7 @@ function stopModel(natural) {
   }
   practice.mutedUntil = natural ? practice.mutedUntil : Math.min(practice.mutedUntil, ctx ? ctx.currentTime : 0);
   practice.tracker.reset();
-  $("pModel").textContent = "▶"; $("pModel").setAttribute("aria-label", "お手本を再生"); $("pModel").classList.remove("on");
+  setIcon($("pModel"), "play"); $("pModel").setAttribute("aria-label", "お手本を再生"); $("pModel").classList.remove("on");
   updateMetronome();
 }
 
@@ -305,7 +305,7 @@ function playModel() {
   model.timers.push(setTimeout(() => stopModel(true), (r.end - ctx.currentTime) * 1000));
   practice.mutedUntil = end + 0.2;
   practice.tracker.reset();
-  $("pModel").textContent = "■"; $("pModel").setAttribute("aria-label", "停止"); $("pModel").classList.add("on");
+  setIcon($("pModel"), "square"); $("pModel").setAttribute("aria-label", "停止"); $("pModel").classList.add("on");
 }
 
 transport.listeners.push(key => {

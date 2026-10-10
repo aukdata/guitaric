@@ -28,7 +28,7 @@
 }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.6; padding: 0 16px; }
-.wrap { max-width: 980px; margin: 0 auto; padding-block: 28px 48px; display: grid; gap: 20px; }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 28px 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
 h1 { font-family: var(--f-display); font-weight: 800; font-size: 2.4rem; letter-spacing: .02em; margin: 0; line-height: 1; }
 header p { margin: 0; color: var(--muted); }
@@ -81,9 +81,9 @@ footer { color: var(--muted); font-size: .82rem; max-width: 70ch; }
 body { padding-bottom: env(safe-area-inset-bottom); }
 .appbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
 .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
-.tab { border: 0; background: transparent; padding: 8px 16px; border-radius: 7px; color: var(--muted); }
+.tab { border: 0; background: transparent; padding: 8px 16px; justify-content: center; border-radius: 7px; color: var(--muted); }
 .tab[aria-current="page"] { background: var(--accent); color: var(--surface); }
-.view { display: grid; gap: 20px; min-width: 0; }
+.view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; }
 .view[hidden] { display: none; }
 .lead { margin: 0; color: var(--muted); }
 .soon p { margin: 0; color: var(--muted); }
@@ -142,7 +142,7 @@ svg.tab { display: block; padding: 0; border-radius: 0; } /* not the mode-tab bu
 .tab-step[data-state="skipped"] .tab-fret, .tab-step[data-state="skipped"] .tab-chord { fill: var(--muted); }
 
 /* ===== editor ===== */
-.song-list { display: grid; }
+.song-list { display: grid; grid-template-columns: minmax(0, 1fr); }
 .song-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
 .song-row:first-child { border-top: 0; }
 .song-title { flex: 1 1 160px; font-weight: 500; }
@@ -262,7 +262,7 @@ kbd { font-family: var(--f-mono); font-size: .8rem; border: 1px solid var(--line
 /* toolbar buttons only phones use */
 @media (min-width: 721px) { .tb-more-btn { display: none; } }
 .t-return[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.ed-toolbar .icon.tb-more-btn { font-weight: 700; }
+
 #pPrev, #pNext { font-size: 1.3rem; line-height: 1; }
 
 /* the TAB scrolls sideways when it can't fit (svg.tab must not pick up the mode-tab button styles) */
@@ -283,3 +283,36 @@ svg.tab { padding: 0; border-radius: 0; flex: none; background: none; }
 
 /* phones: no double-tap zoom (fast taps on buttons and the TAB stay taps); pinch zoom still works */
 html, body, button, svg, .tab-scroll { touch-action: manipulation; }
+
+/* ===== SVG icons (Lucide) ===== */
+svg.ic { width: 1.15em; height: 1.15em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg.ic.filled { fill: currentColor; }
+button.icon { min-width: 38px; justify-content: center; padding: 7px 9px; position: relative; }
+button.icon svg.ic.filled { stroke-width: 1.5; }
+button svg.ic { pointer-events: none; }
+
+/* 解析: ● mic (accent) and ● record (red) */
+button.icon.mic-in { color: var(--accent); }
+button.icon.mic-in[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+button.icon.rec { color: var(--bad); }
+button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); color: var(--surface); }
+.badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--surface); font-size: .72rem; line-height: 18px; text-align: center; }
+#recDlg .recs { max-height: 60vh; overflow: auto; }
+
+/* 曲の一覧 */
+.editor-head { gap: 8px; }
+.editor-head h2 { flex: 1; }
+.editor-head .saved { font-size: .82rem; }
+.list-head { margin: 16px 0 4px; font-size: .82rem; font-weight: 500; color: var(--muted); letter-spacing: .04em; }
+.song-row { flex-wrap: nowrap; gap: 6px; }
+.song-title { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song-row button.icon { padding: 7px 9px; }
+.song-row button.icon.play { color: var(--accent); }
+.song-list > .empty { margin: 6px 0; }
+
+/* "…" pop-up menu */
+.menu { position: absolute; z-index: 50; min-width: 200px; padding: 6px; display: grid; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.menu-item { border: 0; background: none; color: var(--fg); justify-content: flex-start; gap: 10px; padding: 9px 12px; border-radius: 6px; font: inherit; font-weight: 500; display: flex; align-items: center; cursor: pointer; text-align: left; }
+.menu-item:hover, .menu-item:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: none; }
+.menu-item.danger { color: var(--bad); }
+.ed-toolbar svg.ic { width: 1.05em; height: 1.05em; }

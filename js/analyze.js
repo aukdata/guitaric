@@ -54,7 +54,7 @@ async function startMic() {
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
   } catch (e) {
-    setStatus("マイクを使えませんでした（" + (e.name || "error") + "）。ブラウザのマイク許可を確認するか、音声ファイルかサンプルで試してください。", true);
+    setStatus("マイクを使えませんでした（" + (e.name || "error") + "）。ブラウザのマイク許可を確認するか、サンプルで試してください。", true);
     return;
   }
   stopPlayback();
@@ -64,8 +64,7 @@ async function startMic() {
   tapNode.onaudioprocess = e => { if (recording) recChunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
   mute = ctx.createGain(); mute.gain.value = 0;
   micSource.connect(tapNode); tapNode.connect(mute); mute.connect(ctx.destination);
-  $("micBtn").innerHTML = '<span class="dot"></span>マイクを停止';
-  $("micBtn").classList.remove("primary");
+  setPressed($("micBtn"), true, "マイクを停止");
   $("recBtn").disabled = false;
   setStatus("マイク入力を解析中です（" + ctx.sampleRate + " Hz）。弦を鳴らしてください。");
   startLoop();
@@ -77,8 +76,7 @@ function stopMic() {
   if (micStream) micStream.getTracks().forEach(t => t.stop());
   [micSource, tapNode, mute].forEach(n => n && n.disconnect());
   micStream = micSource = tapNode = mute = null;
-  $("micBtn").innerHTML = '<span class="dot"></span>マイクを開始';
-  $("micBtn").classList.add("primary");
+  setPressed($("micBtn"), false, "マイクを開始");
   $("recBtn").disabled = true;
   setStatus("マイクを停止しました。");
 }
@@ -108,14 +106,6 @@ function playSample() {
   playBuffer(buf, "サンプル " + key);
 }
 
-async function analyzeFile(file) {
-  ensureContext();
-  try {
-    const buf = await ctx.decodeAudioData(await file.arrayBuffer());
-    playBuffer(buf, file.name);
-  } catch (e) { setStatus("このファイルは読み込めませんでした。WAV・MP3・M4Aなどの音声ファイルを選んでください。", true); }
-}
-
 function encodeWav(chunks, sr) {
   const len = chunks.reduce((a, c) => a + c.length, 0);
   const buf = new ArrayBuffer(44 + len * 2), v = new DataView(buf);
@@ -135,11 +125,11 @@ function toggleRec() {
   const btn = $("recBtn");
   if (!recording) {
     recChunks = []; recording = true; recStart = performance.now();
-    btn.classList.add("rec-on"); btn.innerHTML = '<span class="dot"></span>録音を停止';
+    setPressed(btn, true, "録音を停止");
     $("recTimer").hidden = false;
   } else {
     recording = false;
-    btn.classList.remove("rec-on"); btn.innerHTML = '<span class="dot"></span>録音';
+    setPressed(btn, false, "録音");
     $("recTimer").hidden = true;
     const blob = encodeWav(recChunks, ctx.sampleRate);
     const secs = recChunks.reduce((a, c) => a + c.length, 0) / ctx.sampleRate;
@@ -161,6 +151,12 @@ function addRecording(blob, secs) {
   const a = document.createElement("a"); a.href = url; a.download = fname; a.textContent = fname + " を保存";
   row.append(audio, meta, a);
   list.prepend(row);
+  $("recCount").textContent = recCount; $("recCount").hidden = false;
+}
+
+function setPressed(btn, on, label) {
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.setAttribute("aria-label", label); btn.title = label;
 }
 
 function drawChroma(chroma) {
@@ -242,21 +238,10 @@ function startLoop() {
 $("micBtn").addEventListener("click", () => (micStream ? stopMic() : startMic()));
 $("recBtn").addEventListener("click", toggleRec);
 $("sampleBtn").addEventListener("click", playSample);
-$("fileInput").addEventListener("change", e => { if (e.target.files[0]) analyzeFile(e.target.files[0]); e.target.value = ""; });
+$("recListBtn").addEventListener("click", () => $("recDlg").showModal());
 window.addEventListener("resize", () => drawChroma(shownChroma));
+drawChroma(shownChroma);
 
-// Opening state: show what a C chord looks like before any sound is played
-(function preview() {
-  const sr = 48000, data = synthStrum(SAMPLE_VOICINGS.C, sr, 0.6);
-  const res = detectNotes(data.subarray(sr * 0.2, sr * 0.2 + FFT_SIZE), sr);
-  if (!res.notes.length) return;
-  const c = chromaFromNotes(res.notes);
-  res.cands = recognizeChord(c, res.notes[0].midi % 12);
-  res.bassMidi = res.notes[0].midi;
-  render(res); drawChroma(c);
-  $("chord").classList.add("stale");
-  $("chordSub").textContent = "例：サンプルの C コードを解析した結果";
-})();
 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-  setStatus("このブラウザではマイクを使えません。音声ファイルかサンプルで試してください。", true);
+  setStatus("このブラウザではマイクを使えません。サンプルで試してください。", true);
 }

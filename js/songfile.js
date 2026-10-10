@@ -56,15 +56,15 @@ async function importFiles(files) {
   $("eFileMsg").textContent = msg.join(" / ") || "読み込める曲がありませんでした";
 }
 
-$("eExportAll").addEventListener("click", () => {
+function exportAllSongs() {
   const mine = loadUserSongs();
   if (!mine.length) { $("eFileMsg").textContent = "書き出す自分の曲がありません"; return; }
   const d = new Date(), pad = n => String(n).padStart(2, "0");
   exportSongs(mine, `guitaric-songs-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`);
   $("eFileMsg").textContent = `${mine.length}曲を書き出しました`;
-});
-$("eImport").addEventListener("change", async e => {
-  const files = [...e.target.files];
-  e.target.value = "";
-  if (files.length) await importFiles(files);
-});
+}
+
+$("eMenu").addEventListener("click", e => showMenu(e.currentTarget, [
+  { label: "自分の曲をすべて書き出す", icon: "download", run: exportAllSongs },
+  { label: "ファイルから読み込む", icon: "upload", file: true, multiple: true, accept: ".json,.txt,application/json,text/plain", run: files => { if (files.length) importFiles([...files]); } },
+]));
