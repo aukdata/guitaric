@@ -238,7 +238,7 @@ kbd { font-family: var(--f-mono); font-size: .8rem; border: 1px solid var(--line
     max-width: calc(100vw - 24px); padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); }
   .ed-toolbar.more .tb-more { display: flex; }
   .tb-more .vol, #edKeys { display: none; }
-  .pr .meter { flex: 0 0 36px; width: 36px; min-width: 0; }
+  .pr .meter { display: none; }
   .ed-pop { width: calc(100% - 0px); }
 }
 @media (hover: none) { #edKeys { display: none; } }
