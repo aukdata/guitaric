@@ -1,5 +1,5 @@
 /* ===== TAB rendering (SVG) ===== */
-const TAB = { cell: 30, minStep: 40, row: 22, top: 30, pad: 16 };
+const TAB = { cell: 30, minStep: 40, row: 22, top: 46, pad: 16 };
 const STRING_LABELS = ["e", "B", "G", "D", "A", "E"];
 
 // Draws the song as TAB staves that wrap to the container's width (at bar lines when a bar fits).
@@ -80,10 +80,10 @@ function renderTab(container, song, opts = {}) {
     const { x: sx, w } = at[i];
     mk("rect", { x: sx + 2, y: 4, width: w - 4, height: height - 8, rx: 6, class: "tab-hl" }, g);
     const cx = sx + Math.min(w, TAB.minStep) / 2;
-    if (st.chord) { const t = mk("text", { x: cx, y: 20, class: "tab-chord" }, g); t.textContent = st.chord; }
+    if (st.chord) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-chord" }, g); t.textContent = st.chord; }
     else if (st.tech) {
-      const t = mk("text", { x: cx, y: 20, class: "tab-tech" }, g);
-      t.textContent = { h: "H", p: "P", s: "sl.", b: st.bend === 1 ? "↑½" : "↑full", d: "↓" }[st.tech];
+      const label = { h: "H", p: "P", s: "sl." }[st.tech];
+      if (label) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-tech" }, g); t.textContent = label; }
       // a slur (H/P) or a slant line (slide) from the previous note on the same string
       const [s, f] = st.notes[0], y = TAB.top + (s - 1) * TAB.row;
       const prev = song.steps[i - 1], pn = prev && !prev.chord && prev.notes.find(n => n[0] === s);
@@ -100,6 +100,7 @@ function renderTab(container, song, opts = {}) {
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret" }, g); t.textContent = label;
     }
+    if (st.tech === "b" || st.tech === "d") drawBend(g, st, cx);
     const held = st.tie && song.steps.slice(0, i).reverse().find(x => x.notes.length);
     if (held) {
       // a tie shows the held frets in parentheses
@@ -108,9 +109,52 @@ function renderTab(container, song, opts = {}) {
         mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
         const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-tie" }, g); t.textContent = label;
       }
-    } else if (!st.notes.length) { const t = mk("text", { x: cx, y: TAB.top + TAB.row * 2.5 + 5, class: "tab-rest" }, g); t.textContent = "休"; }
+    } else if (!st.notes.length) drawRests(g, st.len, sx, w);
     if (opts.onStepClick) g.addEventListener("click", () => opts.onStepClick(i));
     return g;
+  }
+
+  // standard TAB bend marks: a curved arrow up from the fret to "full" / "1/2" above the staff,
+  // and for a release a curved arrow coming back down onto the fret
+  function drawBend(g, st, cx) {
+    const y = TAB.top + (st.notes[0][0] - 1) * TAB.row, ax = cx + 20, tip = 16;
+    const head = (x, yy, up) => mk("path", { d: up ? `M${x} ${yy} l-3.5 7 h7 z` : `M${x} ${yy} l-3.5 -7 h7 z`, class: "tab-arrowhead" }, g);
+    if (st.tech === "b") {
+      mk("path", { d: `M${cx + 9} ${y - 1} Q${ax} ${y - 1} ${ax} ${tip + 6}`, class: "tab-arrow" }, g);
+      head(ax, tip, true);
+      const t = mk("text", { x: ax, y: tip - 4, class: "tab-bendlabel" }, g); t.textContent = st.bend === 1 ? "1/2" : "full";
+    } else {
+      mk("path", { d: `M${cx - 2} ${tip} Q${ax} ${tip} ${ax} ${y - 15}`, class: "tab-arrow" }, g);
+      head(ax, y - 9, false);
+    }
+  }
+
+  // rest symbols for the rest's length, split into standard values (whole, half, quarter, 8th, 16th)
+  function drawRests(g, len, sx, w) {
+    const values = [];
+    for (const v of [song.grid, song.grid / 2, song.grid / 4, song.grid / 8, song.grid / 16]) {
+      if (v < 1 || v !== Math.floor(v)) continue;
+      while (len >= v) { values.push(v * 4 / song.grid); len -= v; } // in quarter notes
+    }
+    const y3 = TAB.top + 2 * TAB.row, y4 = TAB.top + 3 * TAB.row, mid = (y3 + y4) / 2;
+    const gap = Math.min(18, (w - 12) / Math.max(1, values.length));
+    let x = sx + Math.min(w, TAB.minStep) / 2 - (values.length - 1) * gap / 2;
+    for (const q of values) {
+      if (q >= 4) mk("rect", { x: x - 7, y: y3, width: 14, height: 6, class: "tab-restsym" }, g);          // whole: hangs from a line
+      else if (q >= 2) mk("rect", { x: x - 7, y: y4 - 6, width: 14, height: 6, class: "tab-restsym" }, g); // half: sits on a line
+      else if (q >= 1) mk("path", { d: `M${x - 3} ${mid - 13} L${x + 4} ${mid - 5} Q${x} ${mid - 1} ${x + 1} ${mid + 2} L${x + 5} ${mid + 7} Q${x - 3} ${mid + 5} ${x + 1} ${mid + 13} Q${x - 7} ${mid + 7} ${x - 1} ${mid + 5} L${x - 4} ${mid} Q${x} ${mid - 4} ${x - 3} ${mid - 13} z`, class: "tab-restsym" }, g);
+      else {
+        // 8th rest: a dot with a flag on a slanted stem; a 16th rest has two
+        const flags = q >= 0.5 ? 1 : 2;
+        mk("line", { x1: x + 4, y1: mid - 8, x2: x - 1 - flags * 1.5, y2: mid + 8 + (flags - 1) * 5, class: "tab-reststem" }, g);
+        for (let k = 0; k < flags; k++) {
+          const fy = mid - 6 + k * 7, fx = x + 4 - k * 2.2;
+          mk("circle", { cx: fx - 6, cy: fy - 2, r: 2.6, class: "tab-restsym" }, g);
+          mk("path", { d: `M${fx - 6} ${fy} Q${fx - 2} ${fy + 2} ${fx} ${fy - 2}`, class: "tab-reststem" }, g);
+        }
+      }
+      x += gap;
+    }
   }
 
   layout();
