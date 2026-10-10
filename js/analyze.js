@@ -8,18 +8,48 @@ let recording = false, recChunks = [], recStart = 0, recCount = 0;
 
 function setStatus(msg, err) { const s = $("status"); s.textContent = msg; s.classList.toggle("err", !!err); }
 
+// iPhone: Web Audio is silenced by the ring/silent switch unless the page's audio session says it is
+// media playback (Safari 17+: navigator.audioSession). Older iOS: a looping silent <audio> element
+// switches the page to the media channel. recording = the mic is in use as well.
+function setAudioSession(recording) {
+  try { if (navigator.audioSession) navigator.audioSession.type = recording ? "play-and-record" : "playback"; } catch (e) {}
+}
+let silentEl = null;
+function unlockIOSAudio() {
+  const ua = navigator.userAgent, iOS = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (!iOS || navigator.audioSession || silentEl) return;
+  // 0.1 s of silence, 8 kHz 8-bit mono WAV
+  const n = 800, buf = new Uint8Array(44 + n), v = new DataView(buf.buffer);
+  const str = (o, t) => [...t].forEach((c, i) => { buf[o + i] = c.charCodeAt(0); });
+  str(0, "RIFF"); v.setUint32(4, 36 + n, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, "data"); v.setUint32(40, n, true);
+  buf.fill(128, 44);
+  silentEl = document.createElement("audio");
+  silentEl.src = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+  silentEl.loop = true; silentEl.setAttribute("playsinline", "");
+  silentEl.play().catch(() => { silentEl = null; });
+}
+
 function ensureContext() {
   if (!ctx) {
+    setAudioSession(false);
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = ctx.createAnalyser();
     analyser.fftSize = FFT_SIZE;
     analyser.smoothingTimeConstant = 0;
   }
-  if (ctx.state === "suspended") ctx.resume();
+  unlockIOSAudio();
+  // Safari also leaves the context "interrupted" after a call or switching apps
+  if (ctx.state !== "running") ctx.resume().catch(() => {});
   return ctx;
 }
+// iOS only lets audio start inside a real tap: wake the audio on the first touches
+["touchend", "pointerup", "keydown"].forEach(type => document.addEventListener(type, () => {
+  if (ctx && ctx.state !== "running") ctx.resume().catch(() => {});
+}, { passive: true }));
 
 async function startMic() {
+  setAudioSession(true);
   ensureContext();
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
@@ -42,6 +72,7 @@ async function startMic() {
 }
 
 function stopMic() {
+  setAudioSession(false);
   if (recording) toggleRec();
   if (micStream) micStream.getTracks().forEach(t => t.stop());
   [micSource, tapNode, mute].forEach(n => n && n.disconnect());

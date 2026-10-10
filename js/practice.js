@@ -217,6 +217,7 @@ async function keepScreenOn() {
 }
 
 async function startPracticeMic() {
+  setAudioSession(true);
   ensureContext();
   if (typeof micStream !== "undefined" && micStream) stopMic();
   stopPlayback();
@@ -255,6 +256,7 @@ async function startPracticeMic() {
 }
 
 function stopPracticeMic() {
+  setAudioSession(false);
   cancelAnimationFrame(practice.raf); practice.raf = 0;
   if (practice.stream) practice.stream.getTracks().forEach(t => t.stop());
   [practice.source, practice.tap, practice.tapOut].forEach(n => n && n.disconnect());
