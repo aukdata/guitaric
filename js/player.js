@@ -20,8 +20,14 @@ function scheduleSong(song, from, rate, out, onStep) {
     if (st.brush) { sources.push(brushSound(start, out)); continue; }
     if (!st.notes.length) continue;
     // a note rings until the next one starts (the last one rings on); ties after this step keep it ringing
+    // (a tie with marks moves the held pitch while it rings: ties = [{ at, dur, m }], at from this step's start)
     let held = dur, k = p + 1;
-    while (k < order.length && steps[order[k]].tie) held += steps[order[k]].len * cellSecs(song, steps[order[k++]], rate);
+    const ties = [];
+    while (k < order.length && steps[order[k]].tie) {
+      const ts = steps[order[k++]], d = ts.len * cellSecs(song, ts, rate);
+      if (ts.tieMarks) ties.push({ at: held, dur: d, m: ts.tieMarks });
+      held += d;
+    }
     let ring = k >= order.length ? held + 1.6 : held + 0.05;
     if (st.grace) { lag = Math.min(0.06, steps[order[p + 1]] ? steps[order[p + 1]].len * cellSecs(song, steps[order[p + 1]], rate) / 3 : 0.06); ring = lag + 0.03; }
     if (st.stac) ring = Math.min(ring, Math.max(0.08, dur * 0.45)); // staccato: cut short, its length kept
@@ -30,61 +36,74 @@ function scheduleSong(song, from, rate, out, onStep) {
     // strings add a dull click
     const prev = steps[order[p - 1]], groups = new Map();
     st.notes.forEach((n, j) => { const key = JSON.stringify(n[2] || {}); if (!groups.has(key)) groups.set(key, { notes: [], j }); groups.get(key).notes.push(n); });
-    for (const g of groups.values()) sources.push(...noteSound({ ...st, notes: g.notes }, markOf(g.notes[0]), start + g.j * 0.018, dur, ring, prev, out, i + 1));
+    for (const g of groups.values()) sources.push(...noteSound({ ...st, notes: g.notes }, markOf(g.notes[0]), start + g.j * 0.018, dur, ring, prev, out, i + 1, ties));
     if (st.mute) sources.push(brushSound(start, out, 0.8));
   }
   return { sources, timers, start: t0, end: t };
 }
 
 // one group of notes of a step (the same marks m), from `start`; returns its audio sources
-function noteSound(st, m, start, dur, ring, prev, out, seed) {
+// ties: the ties after it that move its pitch ([{ at, dur, m }])
+function noteSound(st, m, start, dur, ring, prev, out, seed, ties = []) {
   const sources = [];
-  const fast = m.fast ? 0.3 : 1;
   if (m.harm && !st.pm && !st.stac) ring = Math.max(ring, Math.min(ring + 1.2, 2.5)); // a harmonic keeps ringing
-  if (m.move === "o") ring = Math.min(ring, dur + 0.05);
-  const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + (m.start === "s" ? 0.3 : 0.05), seed);
+  // a slide out ends the sound (on the note itself, or on a tie after it)
+  const out0 = [{ at: 0, dur, m }, ...ties].find(x => x.m.move === "o");
+  if (out0) ring = Math.min(ring, out0.at + out0.dur + 0.05);
+  // the synthesized string sounds at the fretted pitch; bends, slides and trills move it from there
+  const base = st.notes.map(n => noteMidi(n, st.capo) - bendOf(n[2]));
+  const data = synthStrum(base, ctx.sampleRate, ring + (m.start === "s" ? 0.3 : 0.05), seed);
   const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
   const src = ctx.createBufferSource(); src.buffer = b;
-  const rate = src.playbackRate;
+  const rate = src.playbackRate, fret = st.notes[0][1];
+  const at = (t, semi) => rate.setValueAtTime(2 ** (semi / 12), t);
+  const ramp = (t, semi) => rate.linearRampToValueAtTime(2 ** (semi / 12), t);
+  let cur = 0; // semitones above the fretted pitch
   // how it starts: a slide glides from the previous note on the same string (notes played together
   // slide by the same amount: the first one's); a slide in comes up from a few frets below
   const from = m.start === "s" && prev && prev.notes.find(n => n[0] === st.notes[0][0]);
-  if (from && from[1] !== st.notes[0][1]) {
-    rate.setValueAtTime(2 ** ((from[1] - st.notes[0][1]) / 12), start);
-    rate.exponentialRampToValueAtTime(1, start + Math.min(0.15 * fast, dur * 0.5 || 0.05));
+  const fastStart = m.fast ? 0.3 : 1;
+  if (from && from[1] !== fret) {
+    at(start, from[1] - fret);
+    rate.exponentialRampToValueAtTime(1, start + Math.min(0.15 * fastStart, dur * 0.5 || 0.05));
   } else if (m.start === "i") {
-    rate.setValueAtTime(2 ** (-4 / 12), start);
-    rate.exponentialRampToValueAtTime(1, start + Math.min(0.12 * fast, dur * 0.5 || 0.05));
+    at(start, -4);
+    rate.exponentialRampToValueAtTime(1, start + Math.min(0.12 * fastStart, dur * 0.5 || 0.05));
   }
-  // while it rings: bends glide up into the bent pitch; a release starts bent and comes down;
-  // a slide out falls away at the end; a trill alternates with the other fret about 12 times a second
-  const bend = bendOf(m);
-  if (bend) {
-    rate.setValueAtTime(2 ** (-bend / 12), start);
-    rate.linearRampToValueAtTime(1, start + Math.min(0.2 * fast, dur * 0.6));
-  } else if (m.move && m.move[0] === "d") {
-    const up = 2 ** ((+m.move[1] || 2) / 12);
-    rate.setValueAtTime(up, start);
-    rate.setValueAtTime(up, start + Math.min(0.08 * fast, dur * 0.3));
-    rate.linearRampToValueAtTime(1, start + Math.min(0.25 * fast, dur * 0.8));
-  } else if (m.move === "o") {
-    const fall = start + Math.max(dur * 0.5, dur - 0.15 * fast);
-    rate.setValueAtTime(1, fall);
-    rate.exponentialRampToValueAtTime(2 ** (-7 / 12), start + dur);
-  } else if (m.move === "t") {
-    const other = 2 ** ((m.trill - st.notes[0][1]) / 12);
-    for (let k = 1, x = start + 1 / 12; x < start + Math.min(ring, dur); k++, x += 1 / 12) rate.setValueAtTime(k % 2 ? other : 1, x);
-  }
-  if (m.v) {
-    // vibrato: the pitch wavers about ±25 cents, 5.5 times a second, after the attack
-    const lfo = ctx.createOscillator(), depth = ctx.createGain();
-    lfo.frequency.value = 5.5;
-    depth.gain.setValueAtTime(0, start);
-    depth.gain.linearRampToValueAtTime(0.015, start + Math.min(0.25, dur * 0.4 || 0.1));
-    lfo.connect(depth); depth.connect(rate);
-    lfo.start(start); lfo.stop(start + ring + 0.05);
-    sources.push(lfo);
-  }
+  // while it rings (the note, then each tie that moves it): a bend glides up to its pitch; a release
+  // comes down (a note starts bent); a slide out falls away at the end; a trill alternates with the
+  // other fret about 12 times a second; vibrato wavers about ±25 cents, 5.5 times a second
+  const move = (seg, note) => {
+    const mm = seg.m, t0 = start + seg.at, d = seg.dur, fast = mm.fast ? 0.3 : 1;
+    if (!note && mm.move && mm.move !== "o") at(t0, cur);
+    if (bendOf(mm)) {
+      if (note && !(from && from[1] !== fret) && mm.start !== "i") at(t0, 0);
+      ramp(t0 + Math.min(0.2 * fast, d * 0.6 || 0.05), bendOf(mm)); cur = bendOf(mm);
+    } else if (mm.move && mm.move[0] === "d") {
+      const amount = +mm.move[1] || (note ? 2 : cur || 2);
+      if (note) at(t0, amount);
+      at(t0 + Math.min(0.08 * fast, d * 0.3), note ? amount : cur);
+      ramp(t0 + Math.min(0.25 * fast, d * 0.8 || 0.05), 0); cur = 0;
+    } else if (mm.move === "o") {
+      const fall = t0 + Math.max(d * 0.5, d - 0.15 * fast);
+      at(fall, cur);
+      rate.exponentialRampToValueAtTime(2 ** ((cur - 7) / 12), t0 + d);
+    } else if (mm.move === "t") {
+      for (let k = 1, x = t0 + 1 / 12; x < Math.min(start + ring, t0 + d); k++, x += 1 / 12) at(x, k % 2 ? mm.trill - fret : cur);
+      at(t0 + d, cur);
+    }
+    if (mm.v) {
+      const lfo = ctx.createOscillator(), depth = ctx.createGain();
+      lfo.frequency.value = 5.5;
+      depth.gain.setValueAtTime(0, t0);
+      depth.gain.linearRampToValueAtTime(0.015, t0 + Math.min(0.25, d * 0.4 || 0.1));
+      lfo.connect(depth); depth.connect(rate);
+      lfo.start(t0); lfo.stop(start + ring + 0.05);
+      sources.push(lfo);
+    }
+  };
+  move({ at: 0, dur, m }, true);
+  for (const seg of ties) if (seg.at < ring) move(seg, false);
   const g = ctx.createGain();
   const vol = (m.start && "hps".includes(m.start) ? 1.6 : 2.5) * (st.grace ? 0.8 : 1); // not picked: softer
   if (m.harm) {

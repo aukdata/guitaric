@@ -140,8 +140,10 @@ function renderTab(container, song, opts = {}) {
       // techniques, string by string: H / P / sl. over the step; a slur, a slant line (slide from the
       // previous note, slide in from below, slide out downward) or a bend arrow at each string's note
       const labels = [];
-      for (const n of st.notes) {
-        const [s, f] = n, m = markOf(n);
+      // (a tie with marks: they move every held note)
+      const marked = st.tie && st.tieMarks ? heldNotes(i).map(h => [h[0], h[1], st.tieMarks]) : st.notes;
+      for (const n of marked) {
+        const [s, f] = n, m = markOf(n), lw = String(f).length + (st.tie ? 2 : 0); // (a tie shows "(7)")
         const y = TAB.top + (s - 1) * TAB.row;
         const prev = song.steps[i - 1], pn = prev && !prev.chord && heldNotes(i - 1).find(x => x[0] === s);
         const label = { h: "H", p: "P", s: "sl." }[m.start];
@@ -161,15 +163,15 @@ function renderTab(container, song, opts = {}) {
         }
         // while it rings
         if (m.move === "o") {
-          const x0 = cx + 8 + (String(f).length - 1) * 4;
+          const x0 = cx + 4 + lw * 4;
           mk("line", { x1: x0, x2: x0 + 10, y1: y - 5, y2: y + 5, class: "tab-slur" }, g);
         } else if (m.move === "t") {
           // a trill: "tr" over the staff, the other fret in parentheses after this one
-          const t = mk("text", { x: cx + 12 + (String(f).length - 1) * 4, y: y + 4, class: "tab-trill" }, g); t.textContent = `(${m.trill})`;
+          const t = mk("text", { x: cx + 8 + lw * 4, y: y + 4, class: "tab-trill" }, g); t.textContent = `(${m.trill})`;
           if (!labels.includes("tr")) labels.push("tr");
         } else if (m.move) drawBend(g, st, n, cx, i);
       }
-      if (st.notes.some(n => markOf(n).v)) {
+      if (marked.some(n => markOf(n).v)) {
         // vibrato: a wavy line over the note
         mk("path", { d: `M${cx - 8} ${TAB.top - 14} q2 -4 4 0 t4 0 t4 0 t4 0`, class: "tab-slur" }, g);
       } else if (labels.length) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-tech" }, g); t.textContent = labels.join(" "); }

@@ -10,7 +10,7 @@ const lenText = (len, scale = 1) => { const g = gcd(len, scale); return scale / 
 // one step as a text token ("6-3h?:2", "C", "r:2", "~:8", "6-3:1/3")
 function stepToken(st, withLen, scale = 1) {
   const len = withLen && st.len !== scale && !st.grace ? ":" + lenText(st.len, scale) : "";
-  if (st.tie) return "~" + len;
+  if (st.tie) return "~" + marksText(st.tieMarks) + len;
   if (st.brush) return "x" + (st.loose ? "?" : "") + len;
   if (!st.notes.length) return "r" + len;
   const q = stepFlags(st);
@@ -31,7 +31,7 @@ const MARKS = ["bpm", "repStart", "repEnd", "volta", "comments"];
 const withMarks = (from, st) => { for (const k of MARKS) if (from[k]) st[k] = from[k]; return st; };
 
 const noteSig = st => JSON.stringify([st.notes.map(n => [n[0], n[1], marksText(n[2]) + (markOf(n).harm ? "<>" : "")]), st.mute || [],
-  st.chord || "", st.len, !!st.loose, !!st.tie, !!st.pm, !!st.stac, !!st.grace, !!st.brush, st.volta || 0]);
+  st.chord || "", st.len, !!st.loose, st.tie ? "~" + marksText(st.tieMarks) : "", !!st.pm, !!st.stac, !!st.grace, !!st.brush, st.volta || 0]);
 const stepSig = st => noteSig(st) + JSON.stringify([st.bpm || 0, !!st.repStart, st.repEnd || 0]);
 
 // Writes the steps as bar-separated text, keeping it short where the parser gives the same steps back
@@ -105,7 +105,8 @@ const ed = {
 
 const edSnapshot = () => JSON.stringify([$("edTitle").value.trim(), ed.text]);
 const edDirty = () => ed.loaded && edSnapshot() !== ed.saved;
-const cloneStep = st => ({ ...st, notes: st.notes.map(n => (n[2] ? [n[0], n[1], { ...n[2] }] : n.slice())), ...(st.mute ? { mute: st.mute.slice() } : {}) });
+const cloneStep = st => ({ ...st, notes: st.notes.map(n => (n[2] ? [n[0], n[1], { ...n[2] }] : n.slice())), ...(st.mute ? { mute: st.mute.slice() } : {}),
+  ...(st.tieMarks ? { tieMarks: { ...st.tieMarks } } : {}) });
 
 function edSaveDraft() {
   try {
@@ -243,16 +244,17 @@ function edShowPop() {
     row.classList.toggle("on", f >= 0);
   });
   if (document.activeElement !== $("popChord")) $("popChord").value = st.chord || "";
-  // the selected string's marks (only on a note written string by string)
-  const n = !st.chord && st.notes.find(x => x[0] === s), m = n ? markOf(n) : {};
-  for (const id of ["popStart", "popMove", "popVib", "popFast", "popHarm", "popTrill"]) $(id).disabled = !n;
+  // the selected string's marks (only on a note written string by string); a tie's marks move every
+  // held note (no start, no harmonics)
+  const n = !st.chord && st.notes.find(x => x[0] === s), m = st.tie ? st.tieMarks || {} : n ? markOf(n) : {};
+  for (const id of ["popStart", "popMove", "popVib", "popFast", "popHarm", "popTrill"]) $(id).disabled = !n && !(st.tie && !/Start|Harm/.test(id));
   $("popStart").value = m.start || "";
-  $("popMove").value = !m.move ? "" : m.move[0] === "d" ? "d" + releaseBend(i, n) : m.move;
+  $("popMove").value = !m.move ? "" : m.move[0] === "d" ? (n ? "d" + releaseBend(i, n) : m.move[1] ? m.move : "d2") : m.move;
   $("popTrill").hidden = m.move !== "t";
   if (m.move === "t" && document.activeElement !== $("popTrill")) $("popTrill").value = m.trill;
   $("popVib").checked = !!m.v;
   $("popFast").checked = !!m.fast;
-  $("popFast").disabled = !n || !(m.start === "s" || m.start === "i" || (m.move && "bdo".includes(m.move[0])));
+  $("popFast").disabled = (!n && !st.tie) || !(m.start === "s" || m.start === "i" || (m.move && "bdo".includes(m.move[0])));
   $("popHarm").checked = !!m.harm;
   $("popHarm").disabled = !n || !HARMONICS[n[1]];
   // marks for the whole note
@@ -365,20 +367,25 @@ function edMark(key, value, toggle) {
   if (!ed.sel) return;
   const { i, s } = ed.sel, st = ed.song.steps[i];
   const n = !st.chord && st.notes.find(x => x[0] === s);
-  if (!n) { edStatus(`${s}弦に音を置いてから選んでください`); return; }
-  const m = markOf(n);
+  if (st.tie && (key === "start" || key === "harm")) return;
+  if (!n && !st.tie) { edStatus(`${s}弦に音を置いてから選んでください`); return; }
+  const m = st.tie ? st.tieMarks || {} : markOf(n);
   if (toggle && (m[key] === value || (key === "move" && value[0] === "d" && m.move && m.move[0] === "d"))) value = "";
   if (key === "harm" && value && !HARMONICS[n[1]]) { edStatus("ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです"); return; }
   edChange(steps => {
-    const t = steps[i].notes.find(x => x[0] === s), mm = { ...markOf(t) };
+    const tie = steps[i].tie, t = tie ? null : steps[i].notes.find(x => x[0] === s), mm = { ...(tie ? steps[i].tieMarks : markOf(t)) };
+    // (a tie's trill goes to the held note's fret + 2)
+    const held = tie ? (steps.slice(0, i).reverse().find(x => x.notes.length) || { notes: [[s, 0]] }).notes : null;
+    const fret = tie ? (held.find(x => x[0] === s) || held[0])[1] : t[1];
     if (value) mm[key] = value; else delete mm[key];
     if (key === "move") {
       delete mm.trill;
-      if (value === "t") mm.trill = Math.max(0, Math.min(24, t[1] + 2 > 24 ? t[1] - 2 : t[1] + 2));
+      if (value === "t") mm.trill = Math.max(0, Math.min(24, fret + 2 > 24 ? fret - 2 : fret + 2));
       if (value === "d2") mm.move = "d2";
     }
     // "!" only for a slide or a bend
     if (mm.fast && !(mm.start === "s" || mm.start === "i" || (mm.move && "bdo".includes(mm.move[0])))) delete mm.fast;
+    if (tie) { if (Object.keys(mm).length) steps[i].tieMarks = mm; else delete steps[i].tieMarks; return; }
     t.length = 2;
     if (Object.keys(mm).length) t.push(mm);
   });
@@ -386,9 +393,9 @@ function edMark(key, value, toggle) {
 function edTrill(f) {
   if (!ed.sel || !(f >= 0 && f <= 24)) return;
   const { i, s } = ed.sel;
-  const n = ed.song.steps[i].notes.find(x => x[0] === s);
-  if (!n || markOf(n).move !== "t" || f === n[1]) return;
-  edChange(steps => { steps[i].notes.find(x => x[0] === s)[2].trill = f; });
+  const st = ed.song.steps[i], n = st.notes.find(x => x[0] === s);
+  if (st.tie ? !st.tieMarks || st.tieMarks.move !== "t" : !n || markOf(n).move !== "t" || f === n[1]) return;
+  edChange(steps => { (steps[i].tie ? steps[i].tieMarks : steps[i].notes.find(x => x[0] === s)[2]).trill = f; });
 }
 // a mark for the whole note: "pm" "stac" "grace" "loose"
 function edFlag(key, on) {

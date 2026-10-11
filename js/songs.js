@@ -131,6 +131,7 @@ function chordPitchClasses(name) {
  *   6-3.                "." = staccato (its length kept, the sound cut short)
  *   5-5' 5-7h           "'" = grace note (no length: a moment at the start of the next note)
  *   ~:8                 tie: the previous note keeps ringing (across a bar line too)
+ *   ~b  ~d  ~o  ~t7  ~v  ~b!   a tie may move the held notes: bend / release / slide out / trill / vibrato
  *   C*4                 the chord strummed 4 times in its bar
  *   C?  6-3?            judged loosely: any strum / note passes
  *   marks for one string go right after its fret, in any order, one from each group:
@@ -234,14 +235,21 @@ function parseSongText(text, opts = {}) {
       const len = lenM ? +lenM[1] / (lenM[2] ? +lenM[2] : 1) : null;
       if (lenStr && !(len > 0 && (!lenM[2] || (+lenM[2] >= 1 && +lenM[2] <= 16)))) { errors.push(`「${tok}」の長さが読めません（例 :2 :1/3 :2/3）`); continue; }
       const loose = flags.includes("?"), pm = flags.includes("_"), stac = flags.includes("."), grace = flags.includes("'");
-      const rest = /^[rR~]$/.test(body), brush = /^[xX]$/.test(body);
+      const tieM = /^~([a-z0-9!]*)$/.exec(body);
+      const rest = /^[rR]$/.test(body) || !!tieM, brush = /^[xX]$/.test(body);
       if (rest && (loose || pm || stac || grace)) { errors.push(`「${tok}」：休符・タイには _ . ' ? を付けられません`); continue; }
       if (brush && (pm || stac || grace)) { errors.push(`「${tok}」：ブラッシングに付けられるのは ? だけです`); continue; }
       if (grace && lenStr) { errors.push(`「${tok}」：装飾音（'）は長さを持ちません`); continue; }
       if (/^[rR]$/.test(body)) { push({ notes: [], len: len || 1 }); continue; }
       if (brush) { push({ notes: [], brush: true, len: len || 1, ...(loose ? { loose: true } : {}) }); continue; }
       // "~" holds the previous note on (a tie): nothing new to play, so wait mode skips it like a rest
-      if (body === "~") { push({ notes: [], tie: true, len: len || 1 }); continue; }
+      // its marks move the held notes' pitch ("~b" bends while it rings, "~o" slides out at its end)
+      if (tieM) {
+        const r = parseMarks(tieM[1], -1);
+        if (!r.bad && r.marks.start) r.bad = "：タイには入り方（h p s i）は付けられません";
+        if (r.bad) { errors.push(`「${tok}」${r.bad}`); continue; }
+        push({ notes: [], tie: true, len: len || 1, ...(Object.keys(r.marks).length ? { tieMarks: r.marks } : {}) }); continue;
+      }
       // a grace note takes no time: it sounds for a moment at the start of the next note
       const extra = { ...(loose ? { loose: true } : {}), ...(pm ? { pm: true } : {}), ...(stac ? { stac: true } : {}), ...(grace ? { grace: true } : {}) };
       // notes played together, each string with its own marks ("5-12s+3-14s", "3-7bv"); "x" = a muted
