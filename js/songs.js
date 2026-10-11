@@ -127,7 +127,7 @@ function chordPitchClasses(name) {
  *                       "@0" ends an ending early; outside a repeat they are only shown
  *   a "@[" with no "@]" repeats up to the next "@[" or the end of the song
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
- *   @16 ...             at the very start: use a 16th-note grid (@32: 32nd notes)
+ *   @cell16 ...         at the very start: one cell is a 16th note (@cell32: a 32nd; older text: "@16")
  *   @capo3 ...          at the very start: capo on the 3rd fret (frets are counted from the capo)
  */
 function parseSongText(text, opts = {}) {
@@ -259,7 +259,7 @@ function textWithBpm(s) {
   const text = s.text || "";
   // (only when no "@bpm" comes before the first note)
   if (!s.bpm || /@bpm\d/i.test(/^(\s*(\||@\S+))*/.exec(text)[0])) return text;
-  const lead = /^(\s*@(4|8|16|32|capo\d{1,2})(?=\s|\||$)\s*)*/.exec(text)[0];
+  const lead = /^(\s*@((cell)?(4|8|16|32)|capo\d{1,2})(?=\s|\||$)\s*)*/.exec(text)[0];
   return lead + `@bpm${s.bpm} ` + text.slice(lead.length);
 }
 
@@ -283,9 +283,9 @@ function saveUserSongs(list) {
 }
 function allSongs() { return [...loadUserSongs(), ...PRESET_SONGS.map(s => ({ ...s, preset: true }))]; }
 function buildSong(s) {
-  // leading "@16" (grid: cells per whole note) and "@capo3" in the text, so pasted text carries them
+  // leading "@cell16" (grid: cells per whole note; "@16" in older text) and "@capo3" in the text, so pasted text carries them
   let text = s.text || "", grid = s.grid || 8, capo = 0, m;
-  while ((m = /^\s*@(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text))) {
+  while ((m = /^\s*@(?:cell)?(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text))) {
     if (m[2] != null) capo = Math.min(12, +m[2]); else grid = +m[1];
     text = text.slice(m[0].length);
   }

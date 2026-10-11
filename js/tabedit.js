@@ -301,8 +301,8 @@ function edChange(fn, opts = {}) {
   }
   const sel = fn(steps, { ...ed.song, grid });
   if (sel === false) return;
-  // the grid (when not the song's own) and the capo lead the text: "@16 @capo3 | ... |"
-  const prefix = [grid !== ed.grid ? `@${grid}` : "", capo ? `@capo${capo}` : ""].filter(Boolean).join(" ");
+  // the grid (when not the song's own) and the capo lead the text: "@cell16 @capo3 | ... |"
+  const prefix = [grid !== ed.grid ? `@cell${grid}` : "", capo ? `@capo${capo}` : ""].filter(Boolean).join(" ");
   edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix ? prefix + " " : "") : prefix, sel, opts.merge);
 }
 
