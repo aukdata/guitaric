@@ -743,6 +743,14 @@ $("edRedo").addEventListener("click", () => edUndo(true));
 $("edAddBar").addEventListener("click", edAddBar);
 $("edText").addEventListener("click", edOpenText);
 $("edTextApply").addEventListener("click", edApplyText);
+// the notation list as plain text, one line per item
+$("edHowtoCopy").addEventListener("click", async () => {
+  const text = [...$("edHowto").children].map(li => "- " + li.textContent.trim()).join("\n");
+  const b = $("edHowtoCopy");
+  try { await navigator.clipboard.writeText(text); } catch { return; }
+  b.innerHTML = iconSvg("check");
+  setTimeout(() => { b.innerHTML = iconSvg("copy"); }, 1200);
+});
 $("edTextArea").addEventListener("input", () => {
   const song = buildSong({ text: $("edTextArea").value, grid: ed.grid });
   $("edTextErr").textContent = song.errors.join(" / ");

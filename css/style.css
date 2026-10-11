@@ -168,6 +168,8 @@ button.danger { color: var(--bad); }
 .errors { margin: 0; color: var(--bad); font-size: .85rem; min-height: 1.2em; }
 .howto { font-size: .88rem; }
 .howto summary { cursor: pointer; color: var(--accent); }
+.howto { position: relative; }
+button.icon.howto-copy { position: absolute; top: -4px; right: 0; min-width: 34px; padding: 4px 8px; }
 .howto ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
 .saved { color: var(--good); font-size: .88rem; }
 
