@@ -81,19 +81,27 @@ function sortedSongs(list) {
   return songSort.desc ? out.reverse() : out;
 }
 
+// search: every word must be in the title (ignores case, full/half width, hiragana/katakana)
+const foldText = t => t.normalize("NFKC").toLowerCase().replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+function searchMatch(s) {
+  const words = foldText($("eSearch").value).split(/\s+/).filter(Boolean), title = foldText(s.title || "");
+  return words.every(w => title.includes(w));
+}
+const emptyNote = text => { const p = document.createElement("p"); p.className = "empty"; p.textContent = text; return p; };
+
 function renderSongList() {
-  const songs = allSongs(), mine = songs.filter(s => !s.preset);
+  const all = allSongs(), searching = !!$("eSearch").value.trim();
+  const songs = all.filter(searchMatch), mine = songs.filter(s => !s.preset);
   const head = document.createElement("div"); head.className = "song-row song-head";
   head.append(sortHead("title", "曲名"), sortHead("updated", "更新日"));
   $("eList").replaceChildren(...(mine.length ? [head] : []), ...sortedSongs(mine).map(songRow));
-  if (!mine.length) {
-    const p = document.createElement("p"); p.className = "empty";
-    p.textContent = "まだありません";
-    $("eList").append(p);
-  }
-  $("ePresets").replaceChildren(...songs.filter(s => s.preset).map(songRow));
+  if (!mine.length) $("eList").append(emptyNote(searching && all.some(s => !s.preset) ? "見つかりません" : "まだありません"));
+  const presets = songs.filter(s => s.preset);
+  $("ePresets").replaceChildren(...presets.map(songRow));
+  if (!presets.length) $("ePresets").append(emptyNote("見つかりません"));
 }
 
 $("eNew").addEventListener("click", () => openEditor(null));
+$("eSearch").addEventListener("input", renderSongList);
 
 renderSongList();

@@ -334,6 +334,9 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 #eList > .song-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
 #eList > .empty { grid-column: 1 / -1; }
 .song-date { font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.song-search { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--muted); }
+.song-search:focus-within { border-color: var(--accent); }
+.song-search input { flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--fg); background: none; border: 0; outline: none; padding: 7px 0; }
 .song-head { padding: 0 0 2px; }
 .song-head .sort-head { display: inline-flex; align-items: center; gap: 2px; padding: 4px 0; border: 0; background: none; color: var(--muted); font-size: .78rem; font-weight: 500; cursor: pointer; }
 .song-head .sort-head.on { color: var(--fg); }
