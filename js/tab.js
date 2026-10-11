@@ -32,7 +32,7 @@ function renderTab(container, song, opts = {}) {
   // first / second endings ("1." / "2." brackets)
   const volta = song.steps.map(st => st.volta || 0);
   const staffBottom = TAB.top + TAB.row * 5, stemEnd = staffBottom + 30;
-  const left = TAB.pad + 18, height = stemEnd + 12;
+  const left = TAB.pad + 18, height = stemEnd + 16; // room for a triplet "3" under the beams
   const states = [], at = []; // at[i] = { row, x, w }
   let groups = [], rowEls = [], playing = -1, lastWidth = 0;
 
@@ -276,6 +276,9 @@ function renderTab(container, song, opts = {}) {
     // largest standard values first, dotted ones included, so 3 sixteenths is one dotted 8th rest
     const values = [], q0 = len * 4 / song.grid;
     let rem = q0;
+    // a triplet rest: the symbol of its plain value (the bracket under the staff says "3")
+    const tv = noteValue({ len });
+    if (tv.tup) { values.push(tv); rem = 0; }
     const choices = [];
     for (const base of [4, 2, 1, 0.5, 0.25, 0.125]) for (const dots of [1, 0]) choices.push({ q: base * (2 - 1 / 2 ** dots), base, dots });
     choices.sort((a, b) => b.q - a.q);
@@ -305,7 +308,8 @@ function renderTab(container, song, opts = {}) {
     }
   }
 
-  // note value of a step as { base, dots } in quarter notes (base 4 = whole ... 0.25 = 16th)
+  // note value of a step as { base, dots, tup? } in quarter notes (base 4 = whole ... 0.25 = 16th;
+  // tup 3 = a triplet value, 2/3 as long)
   function noteValue(st) {
     const q = st.len * 4 / song.grid;
     for (const base of [4, 2, 1, 0.5, 0.25, 0.125]) {
@@ -314,6 +318,8 @@ function renderTab(container, song, opts = {}) {
         if (Math.abs(v - q) < 1e-6) return { base, dots };
       }
     }
+    // a triplet: three of these in the time of two
+    for (const base of [2, 1, 0.5, 0.25, 0.125]) if (Math.abs(base * 2 / 3 - q) < 1e-6) return { base, dots: 0, tup: 3 };
     // not a single standard value: show the largest one it holds
     for (const base of [4, 2, 1, 0.5, 0.25, 0.125]) if (q >= base) return { base, dots: 0 };
     return { base: 0.125, dots: 0 };
@@ -334,7 +340,7 @@ function renderTab(container, song, opts = {}) {
       return TAB.top + (Math.max(...ns.map(n => n[0])) - 1) * TAB.row + 10;
     };
     const items = rowSteps.map(i => {
-      const st = song.steps[i], v = noteValue(st), exact = Math.abs(v.base * (2 - 1 / 2 ** v.dots) - st.len * 4 / song.grid) < 1e-6;
+      const st = song.steps[i], v = noteValue(st), exact = Math.abs(v.base * (2 - 1 / 2 ** v.dots) * (v.tup ? 2 / 3 : 1) - st.len * 4 / song.grid) < 1e-6;
       if (st.notes.length || st.tie || st.brush) return { i, x: xOf(i), v, top: lowY(st), note: true };
       // a rest shorter than a beat with a single symbol may sit under the beam of its beat
       return exact && v.base < 1 ? { i, x: xOf(i), v, top: restY, note: false } : null;
@@ -388,6 +394,40 @@ function renderTab(container, song, opts = {}) {
             mk("rect", { x: toward > 0 ? n.x - 0.7 : n.x - len, y, width: len + 0.7, height: 3.5, class: "tab-beam" }, gr);
           }
         });
+      }
+    }
+    drawTuplets(gr, items, groupsOf);
+  }
+
+  // triplets: a "3" under each set of three-in-the-time-of-two; a bracket when the set is not
+  // exactly one beamed group (quarter-note triplets, rests at its ends, mixed values)
+  function drawTuplets(gr, items, groupsOf) {
+    const q = n => song.steps[n.i].len * 4 / song.grid;
+    const sets = [];
+    let run = [];
+    const flush = () => {
+      // split a run of triplet values into sets, each as long as two of its shortest value
+      let set = [], sum = 0, span = 0;
+      for (const n of run) {
+        set.push(n); sum += q(n);
+        span = set.length === 1 ? 2 * n.v.base : Math.min(span, 2 * n.v.base);
+        if (sum >= span - 1e-6) { sets.push(set); set = []; sum = 0; }
+      }
+      if (set.length) sets.push(set);
+      run = [];
+    };
+    for (const n of items) {
+      if (n && n.v.tup && (!run.length || at[run[run.length - 1].i].row === at[n.i].row)) run.push(n);
+      else if (run.length) { flush(); if (n && n.v.tup) run.push(n); }
+    }
+    if (run.length) flush();
+    const y = stemEnd + 9;
+    for (const set of sets) {
+      const x0 = set[0].x, x1 = set[set.length - 1].x, xm = (x0 + x1) / 2;
+      const beamed = set.every(n => n.note) && groupsOf.some(g => g.length > 1 && set.every(n => g.includes(n)));
+      const t = mk("text", { x: xm, y: y + 3, class: "tab-tuplet" }, gr); t.textContent = "3";
+      if (!beamed) {
+        mk("path", { d: `M${x0 - 3} ${y - 5} V${y} H${xm - 6} M${xm + 6} ${y} H${x1 + 3} V${y - 5}`, class: "tab-tupbracket" }, gr);
       }
     }
   }
