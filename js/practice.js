@@ -1,7 +1,8 @@
 /* ===== practice: wait mode (advance when the expected chord/note is played) ===== */
 // settle: seconds after a strum before judging (the 0.34 s chord window still holds the previous sound).
 // A repeat of the same chord/note can only be told apart by a new strum, so it uses a stricter path.
-const JUDGE = { present: 0.2, extra: 0.3, extraNote: 0.25, extraSal: 0.8, okFrames: 2, wrongAfter: 0.9, settle: 0.12, settleSame: 0.2, minGap: 0.3 };
+const JUDGE = { present: 0.2, extra: 0.3, extraNote: 0.25, extraSal: 0.8, okFrames: 2, wrongAfter: 0.9, settle: 0.12, settleSame: 0.2, minGap: 0.3, attack: 2 };
+// attack: a picked note must sound right within this time after its attack; later it is only the ring
 const practice = {
   song: null, idx: 0, tab: null, stream: null, source: null, raf: 0,
   tracker: createTracker(), okRun: 0, missRun: 0, fresh: true, silent: 0, wrongShown: false, sameAsPrev: false, loose: false, lastOk: false, ringing: [], strummed: false,
@@ -249,6 +250,8 @@ function practiceTick(buf) {
   // time since the attack itself (the onset event arrives ~0.1 s late, but carries its own time)
   const since = ctx.currentTime - practice.lastStrum;
   const j = practice.loose ? { ok: res.notes.length > 0, missing: [], extra: [] } : judgeStep(st, res, tr, practice.sameAsPrev, practice.ringing);
+  // the attack's time is up: what still sounds is its ring, which never passes a picked step
+  if (practice.fresh && !noAttack(st) && since > JUDGE.attack) practice.fresh = false;
   if (j.ok) {
     practice.missRun = 0;
     practice.lastOk = practice.fresh;
@@ -267,7 +270,11 @@ function practiceTick(buf) {
   // (a note held over from the previous step is not a mistake either: the new one may just be late)
   const loudest = res.notes.reduce((a, n) => (!a || n.salience > a.salience ? n : a), null);
   if (practice.strummed && !practice.wrongShown && loudest && since >= JUDGE.wrongAfter &&
-      !(!st.chord && practice.ringing.includes(loudest.midi % 12))) showWrong(st, res, tr, j);
+      !(!st.chord && practice.ringing.includes(loudest.midi % 12))) {
+    showWrong(st, res, tr, j);
+    // a wrong single note used its pick up: fretting the right note on the ringing string doesn't count
+    if (!st.chord && !noAttack(st)) practice.fresh = false;
+  }
 }
 
 async function keepScreenOn() {
