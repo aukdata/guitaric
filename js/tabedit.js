@@ -15,9 +15,9 @@ function stepToken(st, withLen) {
 }
 
 // tempo and repeat marks around a token ("@[ @bpm120 C*4 @]3"): those before it from its first step,
-// the repeat end from its last; volta: it opens a first ending
+// the repeat end from its last; volta: it opens a first (1) or second (2) ending
 function marked(st, last, tok, volta, noBpm) {
-  return (st.repStart ? "@[ " : "") + (volta ? "@1 " : "") + (st.bpm && !noBpm ? `@bpm${st.bpm} ` : "") + tok
+  return (st.repStart ? "@[ " : "") + (volta ? `@${volta} ` : "") + (st.bpm && !noBpm ? `@bpm${st.bpm} ` : "") + tok
     + (last.repEnd ? (last.repEnd === 2 ? " @]" : ` @]${last.repEnd}`) : "");
 }
 // marks that belong to a place in the song, not to the note there (kept when the note is replaced)
@@ -25,7 +25,7 @@ const MARKS = ["bpm", "repStart", "repEnd", "volta"];
 const withMarks = (from, st) => { for (const k of MARKS) if (from[k]) st[k] = from[k]; return st; };
 
 const noteSig = st => JSON.stringify([st.notes, st.chord || "", st.len, st.tech || "", st.bend || 0, !!st.loose, !!st.tie,
-  !!st.pm, !!st.brush, !!st.harm, !!st.volta]);
+  !!st.pm, !!st.brush, !!st.harm, st.volta || 0]);
 const stepSig = st => noteSig(st) + JSON.stringify([st.bpm || 0, !!st.repStart, st.repEnd || 0]);
 
 // Writes the steps as bar-separated text, keeping it short where the parser gives the same steps back
@@ -35,7 +35,7 @@ function stepsToText(steps, grid, timeSig, prefix) {
   const barCells = timeSig[0] * grid / 4, bars = [];
   let cell = 0;
   for (const st of steps) { const b = Math.floor(cell / barCells); (bars[b] = bars[b] || []).push(st); cell += st.len; }
-  const opensVolta = new Set(steps.filter((st, i) => st.volta && !(steps[i - 1] && steps[i - 1].volta)));
+  const opensVolta = new Set(steps.filter((st, i) => st.volta && !(steps[i - 1] && steps[i - 1].volta === st.volta)));
   const lead = steps[0] && steps[0].bpm ? `@bpm${steps[0].bpm} ` : "";
   // the parser reads the marks back too; a first ending runs on into the next bar
   const same = (a, b) => a.length === b.length && a.every((st, i) => stepSig(st) === stepSig(b[i]));
@@ -53,10 +53,12 @@ function stepsToText(steps, grid, timeSig, prefix) {
       let t;
       if (!r.st.chord || r.n === 1) t = open && r.st.chord ? stepToken(r.st, false) : stepToken(r.st, true);
       else t = `${r.st.chord}*${r.n}${(r.st.pm ? "_" : "") + (r.st.loose ? "?" : "")}` + (open ? "" : ":" + r.st.len * r.n);
-      return marked(r.st, r.last, t, opensVolta.has(r.st), r.st === steps[0]);
+      // a second ending is written again at each bar it goes on into
+      const v = opensVolta.has(r.st) || (r.st.volta === 2 && r.st === bar[0]) ? r.st.volta : 0;
+      return marked(r.st, r.last, t, v, r.st === steps[0]);
     };
     const short = runs.map(r => tok(r, true)).join(" ");
-    const pre = (bi === 0 ? lead : "") + (bar[0].volta && !opensVolta.has(bar[0]) ? "@1 " : "");
+    const pre = (bi === 0 ? lead : "") + (bar[0].volta === 1 && !opensVolta.has(bar[0]) ? "@1 " : "");
     if (same(parseSongText(`${pre}|${short}|`, { grid, timeSig }).steps, bar.map(strip))) return short;
     return runs.map(r => tok(r, false)).join(" ");
   });
@@ -203,11 +205,15 @@ function edShowPop() {
   const g = ed.sel && $("edTab").querySelector(`.tab-step[data-i="${ed.sel.i}"]`);
   if (!ed.popOpen || !g || ed.play || ed.song.errors.length) { pop.hidden = true; return; }
   const i = ed.sel.i, st = ed.song.steps[i], s = ed.sel.s;
-  const note = st.notes.length > 0 || !!st.tie || ed.noteDraft === i;
-  const kind = st.brush && ed.noteDraft !== i ? "brush" : note ? "note" : "rest";
+  // tabs: note (a brushing stroke is a note with every string muted) / rest / tempo and repeats of this place
+  const kind = ed.popView === "ctrl" ? "ctrl" : isPlayed(st) || st.tie ? "note" : "rest";
   $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.kind === kind)));
   $("popNote").hidden = kind !== "note";
   $("popTech").hidden = kind !== "note";
+  $("popPlay").hidden = kind === "ctrl";
+  $("popLenRow").hidden = kind === "ctrl";
+  $("popCtrl").hidden = kind !== "ctrl";
+  $("popCtrlKind").hidden = kind !== "ctrl";
   $("popPlay").disabled = !isPlayed(st);
   $("popFrets").querySelectorAll(".fret-row").forEach(row => {
     const rs = +row.dataset.s, n = st.notes.find(x => x[0] === rs), f = n ? n[1] : -1;
@@ -220,17 +226,26 @@ function edShowPop() {
   if (document.activeElement !== $("popChord")) $("popChord").value = st.chord || "";
   $("popLoose").checked = !!st.loose;
   $("popLoose").disabled = !st.notes.length;
-  $("popPm").checked = !!st.pm;
-  $("popPm").disabled = !st.notes.length;
-  // techniques on a single note; harmonics also on notes played together
-  const single = !st.chord && st.notes.length === 1;
-  $("popTech").disabled = st.chord || !st.notes.length;
-  $("popTech").querySelectorAll("option").forEach(o => { o.disabled = !single && o.value !== "" && o.value !== "n"; });
-  $("popTech").value = st.harm ? "n" : single && st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(i) : "") : "";
+  // techniques: all on a single note; harmonics on notes played together; P.M. and brushing on anything
+  const single = !st.chord && st.notes.length === 1, several = !st.chord && st.notes.length > 1;
+  $("popTech").disabled = !!st.tie;
+  $("popTech").querySelectorAll("option").forEach(o => {
+    o.disabled = !(o.value === "" || o.value === "pm" || o.value === "x" || single || (o.value === "n" && several));
+  });
+  $("popTech").value = techValue(st, i);
+  // tempo: the first step always sets it; later steps change it only when ticked (and show it on the TAB)
+  ed.ctrlKind = ed.ctrlKind || "tempo";
+  $("popCtrlKind").value = ed.ctrlKind;
+  $("popCtrlTempo").hidden = ed.ctrlKind !== "tempo";
+  $("popCtrlRepeat").hidden = ed.ctrlKind !== "repeat";
+  $("popBpmOn").checked = i === 0 || !!st.bpm;
+  $("popBpmOn").disabled = i === 0;
+  $("popBpm").disabled = !$("popBpmOn").checked;
   if (document.activeElement !== $("popBpm")) $("popBpm").value = st.tempo || ed.song.bpm || 80;
   $("popRepStart").setAttribute("aria-pressed", String(!!st.repStart));
-  $("popRepEnd").setAttribute("aria-pressed", String(!!st.repEnd));
-  $("popVolta").setAttribute("aria-pressed", String(!!st.volta));
+  $("popRepEnd").setAttribute("aria-pressed", String(!!st.repEnd || !!st.autoEnd));
+  $("popVolta1").setAttribute("aria-pressed", String(st.volta === 1));
+  $("popVolta2").setAttribute("aria-pressed", String(st.volta === 2));
   $("popRepCount").value = st.repEnd || 2;
   $("popRepCount").disabled = !st.repEnd;
   const k = lenPos(st.len, ed.song.grid), exact = Math.abs(st.len / ed.song.grid - LEN_VALUES[k][0]) < 1e-9;
@@ -246,8 +261,15 @@ function edShowPop() {
   if (r.bottom > innerHeight && !pop.contains(document.activeElement)) window.scrollBy(0, Math.min(r.bottom - innerHeight + 8, r.top - 120));
 }
 
+// the 奏法 select's value for a step
+function techValue(st, i) {
+  if (st.brush) return "x";
+  if (st.harm) return "n";
+  if (st.tech && !st.chord && st.notes.length === 1) return st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(i) : "");
+  return st.pm ? "pm" : "";
+}
+
 function edSelect(i, s, open) {
-  if (!ed.sel || ed.sel.i !== i) ed.noteDraft = null;
   ed.sel = { i, s };
   ed.digit = "";
   if (open != null) ed.popOpen = open;
@@ -307,7 +329,8 @@ function setFret(st, s, f) {
   if (f != null) st.notes.push([s, f]);
   st.notes.sort((a, b) => b[0] - a[0]);
   if (st.notes.length !== 1) { delete st.tech; delete st.bend; }
-  if (!st.notes.length) { delete st.loose; delete st.pm; }
+  // every string muted: a brushing stroke
+  if (!st.notes.length) { delete st.loose; delete st.pm; st.brush = true; }
   if (st.harm && st.notes.some(n => !HARMONICS[n[1]])) delete st.harm; // no harmonic at that fret
 }
 const restStep = len => ({ notes: [], len });
@@ -318,42 +341,70 @@ function edFret(f, string, merge) {
   edChange(steps => { setFret(steps[i], s, f); return { i, s }; }, { merge });
 }
 
-// "h" "p" "s" "b2" "b1" "d" "v" (vibrato), "n" (harmonics) or "" (none); the same one again turns it off
-// (harmonics also go on notes played together, at harmonic frets only)
+// 奏法: "h" "p" "s" "b2" "b1" "d2" "d1" "v" (vibrato), "n" (harmonics), "pm" (bridge mute), "x" (brushing:
+// every string muted) or "" (none); the same one again turns it off
 function edTech(v, toggle) {
   if (!ed.sel) return;
-  const st = ed.song.steps[ed.sel.i];
-  const cur = st.harm ? "n" : st.tech ? st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(ed.sel.i) : "") : "";
-  if (toggle && cur === v) v = "";
-  if (v === "n" ? st.chord || !st.notes.length : v && (st.chord || st.notes.length !== 1)) { edStatus("奏法は単音にだけ付けられます"); return; }
+  const i = ed.sel.i, st = ed.song.steps[i];
+  if (st.tie) return;
+  if (toggle && techValue(st, i) === v) v = "";
+  if (v === "x") { edBrush(false); return; }
+  if (st.brush && v !== "") { edStatus("先に音を選んでください"); return; }
+  const single = !st.chord && st.notes.length === 1;
+  if (v && v !== "pm" && v !== "n" && !single) { edStatus("この奏法は単音にだけ付けられます"); return; }
+  if (v === "n" && (st.chord || !st.notes.length)) { edStatus("ハーモニクスは単音か同時に弾く音に付けられます"); return; }
   if (v === "n" && st.notes.some(n => !HARMONICS[n[1]])) { edStatus("ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです"); return; }
-  const { i } = ed.sel;
   edChange(steps => {
-    delete steps[i].tech; delete steps[i].bend; delete steps[i].harm;
-    if (v === "n") steps[i].harm = true;
-    else if (v) { steps[i].tech = v[0]; if (v[1]) steps[i].bend = +v[1]; }
+    const t = steps[i];
+    if (t.brush) { steps[i] = withMarks(t, restStep(t.len)); return; } // ブラッシング → 通常: no strings left
+    delete t.tech; delete t.bend; delete t.harm; delete t.pm;
+    if (v === "n") t.harm = true;
+    else if (v === "pm") t.pm = true;
+    else if (v) { t.tech = v[0]; if (v[1]) t.bend = +v[1]; }
   });
 }
 
-// the tempo from this step on ("@bpm"); the same tempo as before it removes the change
+// the tempo from this step on ("@bpm"): on = change it here (always on for the first step)
+function edBpmOn(on) {
+  if (!ed.sel) return;
+  const { i } = ed.sel, v = ed.song.steps[i].tempo || ed.song.bpm || 80;
+  edChange(steps => { if (on || i === 0) steps[i].bpm = v; else delete steps[i].bpm; });
+}
 function edBpm(v) {
   if (!ed.sel || !(v >= 20 && v <= 300)) return;
-  const { i } = ed.sel, before = i > 0 ? ed.song.steps[i - 1].tempo : 0;
-  edChange(steps => { if (v === before) delete steps[i].bpm; else steps[i].bpm = v; }, { merge: "bpm" });
+  const { i } = ed.sel;
+  edChange(steps => { steps[i].bpm = v; }, { merge: "bpm" });
 }
-// repeat marks on this step: "start" (|: before it), "end" (:| after it, played n times), "volta" (first ending)
+// the steps from i to the end of its bar
+function barEnd(steps, i, grid, beats) {
+  const barCells = beats * grid / 4;
+  let cell = 0;
+  for (let k = 0; k < i; k++) cell += steps[k].len;
+  let k = i;
+  for (cell += steps[k].len; k + 1 < steps.length && cell % barCells; k++) cell += steps[k + 1].len;
+  return k;
+}
+// repeat marks on this step: "start" (|: before it), "end" (:| after it, played n times),
+// "volta1" (first ending: from here to the repeat's end), "volta2" (second ending: to the end of the bar)
 function edRepeat(kind, n) {
   if (!ed.sel) return;
   const { i } = ed.sel;
-  edChange(steps => {
+  edChange((steps, song) => {
     const st = steps[i];
     if (kind === "start") { if (st.repStart) delete st.repStart; else st.repStart = true; }
     else if (kind === "end") { if (n) st.repEnd = n; else if (st.repEnd) delete st.repEnd; else st.repEnd = 2; }
-    else if (kind === "volta") {
-      // a first ending runs from here to the repeat's end
-      const on = !st.volta;
-      for (let k = i; k < steps.length; k++) { if (on) steps[k].volta = true; else delete steps[k].volta; if (steps[k].repEnd) break; }
-      if (!on) for (let k = i - 1; k >= 0 && steps[k].volta && !steps[k].repEnd; k--) delete steps[k].volta;
+    else {
+      const v = kind === "volta1" ? 1 : 2, on = st.volta !== v;
+      if (on) {
+        const end = v === 1 ? steps.findIndex((x, k) => k >= i && x.repEnd) : barEnd(steps, i, song.grid, song.timeSig[0]);
+        for (let k = i; k <= (end < 0 ? steps.length - 1 : end); k++) steps[k].volta = v;
+      } else {
+        // the whole bracket this step is in
+        let a = i, b = i;
+        while (a > 0 && steps[a - 1].volta === v) a--;
+        while (b + 1 < steps.length && steps[b + 1].volta === v) b++;
+        for (let k = a; k <= b; k++) delete steps[k].volta;
+      }
     }
   });
 }
@@ -389,12 +440,11 @@ function edLoose(on) {
 function edInsert(after, step) {
   if (!ed.sel) return;
   const { i, s } = ed.sel, at = after ? i + 1 : i;
-  ed.noteDraft = at; // the new step opens as a note
   // a copy of the current step (or of the given one: paste / duplicate), without its tempo or repeat marks
   edChange(steps => {
     const c = cloneStep(step || steps[i]);
     delete c.bpm; delete c.repStart; delete c.repEnd;
-    if (!(steps[at] && steps[at].volta && steps[at - 1] && steps[at - 1].volta)) delete c.volta;
+    if (!(steps[at] && steps[at - 1] && steps[at].volta && steps[at - 1].volta === steps[at].volta)) delete c.volta;
     steps.splice(at, 0, c); return { i: at, s };
   });
 }
@@ -417,20 +467,13 @@ function edRest() {
   edChange(steps => { steps[i] = withMarks(steps[i], restStep(steps[i].len)); });
 }
 
-// brushing (muted strum, "x"); again turns it back into a rest
+// brushing (every string muted, "x"); toggle: again turns it back into a rest
 function edBrush(toggle) {
   if (!ed.sel) return;
   const { i } = ed.sel;
-  ed.noteDraft = null;
   edChange(steps => { const len = steps[i].len; steps[i] = withMarks(steps[i], toggle && steps[i].brush ? restStep(len) : { notes: [], brush: true, len }); });
 }
 
-// bridge mute ("_"), only on a sounding note or chord
-function edPm(on) {
-  if (!ed.sel || !ed.song.steps[ed.sel.i].notes.length) return;
-  const { i } = ed.sel;
-  edChange(steps => { if (on) steps[i].pm = true; else delete steps[i].pm; });
-}
 
 function edCapo(n) {
   edChange(() => {}, { capo: n });
@@ -579,19 +622,23 @@ $("popKind").addEventListener("click", e => {
   const b = e.target.closest("button");
   if (!b || !ed.sel) return;
   const st = ed.song.steps[ed.sel.i];
-  if (b.dataset.kind === "rest") { ed.noteDraft = null; if (isPlayed(st) || st.tie) edRest(); else edShowPop(); }
-  else if (b.dataset.kind === "brush") { if (!st.brush) edBrush(false); else { ed.noteDraft = null; edShowPop(); } }
-  else { ed.noteDraft = ed.sel.i; edShowPop(); }
+  ed.popView = b.dataset.kind === "ctrl" ? "ctrl" : "step";
+  // a rest made a note starts with every string muted (brushing) until frets are chosen
+  if (b.dataset.kind === "rest" && (isPlayed(st) || st.tie)) edRest();
+  else if (b.dataset.kind === "note" && !isPlayed(st) && !st.tie) edBrush(false);
+  else edShowPop();
 });
 $("popTech").addEventListener("change", e => edTech(e.target.value, false));
 $("popLen").addEventListener("input", () => edLenValue(+$("popLen").value));
 $("popLoose").addEventListener("change", e => edLoose(e.target.checked));
-$("popPm").addEventListener("change", e => edPm(e.target.checked));
+$("popCtrlKind").addEventListener("change", e => { ed.ctrlKind = e.target.value; edShowPop(); });
+$("popBpmOn").addEventListener("change", e => edBpmOn(e.target.checked));
 $("popBpm").addEventListener("change", e => edBpm(Math.round(+e.target.value)));
 $("popBpm").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } });
 $("popRepStart").addEventListener("click", () => edRepeat("start"));
 $("popRepEnd").addEventListener("click", () => edRepeat("end"));
-$("popVolta").addEventListener("click", () => edRepeat("volta"));
+$("popVolta1").addEventListener("click", () => edRepeat("volta1"));
+$("popVolta2").addEventListener("click", () => edRepeat("volta2"));
 $("popRepCount").addEventListener("change", e => edRepeat("end", +e.target.value));
 $("edCapo").addEventListener("change", e => edCapo(+e.target.value));
 $("popChordSet").addEventListener("click", () => { edChord($("popChord").value.trim()); $("popChord").blur(); });
@@ -711,7 +758,7 @@ document.addEventListener("keydown", e => {
   else if (key === "x") { done(); edBrush(true); }
   else if (key === "v") { done(); edTech("v", true); }
   else if (key === "n") { done(); edTech("n", true); }
-  else if (key === "m") { done(); edPm(!ed.song.steps[ed.sel.i].pm); }
+  else if (key === "m") { done(); edTech("pm", true); }
   else if (k === "[") { done(); edLenStep(-1); }
   else if (k === "]") { done(); edLenStep(1); }
   else if (key === "c") { done(); ed.popOpen = true; edShowPop(); $("popChord").focus(); $("popChord").select(); }

@@ -348,7 +348,11 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .pop-row input#popChord { width: 6em; }
 .pop-len { flex-wrap: nowrap; }
 .pop-bpm input { width: 4.2em; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; }
-.pop-flow .seg button { font-weight: 700; min-width: 2.4em; }
+.pop-ctrl { display: grid; gap: 8px; justify-items: start; }
+.pop-ctrl[hidden], .pop-ctrl [hidden], #popLenRow[hidden] { display: none; }
+.pop-ctrl select { font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+.pop-ctrl .seg button { font-weight: 700; min-width: 2.4em; }
+.pop-bpm input:disabled { opacity: .5; }
 .len-slider { flex: 1; min-width: 0; display: grid; }
 .len-ticks { position: relative; height: 1.2em; margin: 0 8px; font-size: .66rem; color: var(--muted); }
 .len-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
@@ -369,3 +373,4 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .pop-row.actions .danger { margin-left: auto; color: var(--bad); }
 .ed-pop > * { min-width: 0; }
 #popTech { width: 6.6em; }
+.pop-head button[hidden] { display: none; }

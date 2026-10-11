@@ -28,12 +28,8 @@ function renderTab(container, song, opts = {}) {
   // start of each step in cells, for beaming within a beat
   const starts = [];
   song.steps.reduce((a, st, i) => { starts[i] = a; return a + st.len; }, 0);
-  // first / second endings: "1." over the first ending, "2." over the bar after its repeat
-  const volta = song.steps.map(st => (st.volta ? 1 : 0));
-  song.steps.forEach((st, i) => {
-    if (!st.repEnd || !st.volta) return;
-    for (let k = i + 1; k < song.steps.length; k++) { volta[k] = 2; if (endsBar[k]) break; }
-  });
+  // first / second endings ("1." / "2." brackets)
+  const volta = song.steps.map(st => st.volta || 0);
   const staffBottom = TAB.top + TAB.row * 5, stemEnd = staffBottom + 30;
   const left = TAB.pad + 18, height = stemEnd + 12;
   const states = [], at = []; // at[i] = { row, x, w }
@@ -97,7 +93,7 @@ function renderTab(container, song, opts = {}) {
     mk("rect", { x: sx + 2, y: 4, width: w - 4, height: height - 8, rx: 6, class: "tab-hl" }, g);
     const cx = sx + Math.min(w, TAB.minStep) / 2;
     // a tempo change ("@bpm") from this step on
-    if (i > 0 && st.bpm && st.tempo !== song.steps[i - 1].tempo) tempoMark(g, sx + (volta[i] && volta[i - 1] !== volta[i] ? 20 : 4), volta[i] ? 14 : 10, st.bpm);
+    if (i > 0 && st.bpm) tempoMark(g, sx + (volta[i] && volta[i - 1] !== volta[i] ? 20 : 4), volta[i] ? 14 : 10, st.bpm);
     drawRepeat(g, st, sx, w);
     if (volta[i]) {
       // the ending's bracket over the top; it opens where the ending (or a new row) starts
@@ -178,7 +174,7 @@ function renderTab(container, song, opts = {}) {
       for (const y of ys) mk("circle", { cx: x + dir * 10.5, cy: y, r: 2.2, class: "tab-repeat" }, g);
     };
     if (st.repStart) sign(sx, 1);
-    if (st.repEnd) {
+    if (st.repEnd || st.autoEnd) {
       sign(sx + w, -1);
       if (st.repEnd > 2) { const t = mk("text", { x: sx + w - 2, y: TAB.top - 4, class: "tab-capo tab-times" }, g); t.textContent = `×${st.repEnd}`; }
     }

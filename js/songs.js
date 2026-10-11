@@ -124,6 +124,8 @@ function chordPitchClasses(name) {
  *   @bpm120             tempo from the next note on (anywhere: a tempo change mid-song)
  *   @[ ... @]  @]3      repeat the part between (twice / 3 times); "@]" alone repeats from the top
  *   @[ A @1 B @] C      "@1": first ending, skipped on the last time through (A B A C)
+ *   @[ A @1 B @] @2 C   "@2": second ending (to the end of its bar), only shown; inside a repeat: last time only
+ *   a "@[" with no "@]" repeats to the end of the song
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  *   @16 ...             at the very start: use a 16th-note grid (@32: 32nd notes)
  *   @capo3 ...          at the very start: capo on the 3rd fret (frets are counted from the capo)
@@ -134,12 +136,12 @@ function parseSongText(text, opts = {}) {
   const usesBars = text.includes("|");
   const bars = text.split("|").map(b => b.trim()).filter(Boolean);
   const steps = [], errors = [];
-  // directives waiting for the next note: tempo, repeat start; volta: inside a first ending
-  let pending = {}, volta = false;
+  // directives waiting for the next note: tempo, repeat start; volta: inside a first (1) or second (2) ending
+  let pending = {}, volta = 0;
   for (const bar of (usesBars ? bars : [text])) {
     const items = [];
     const push = item => {
-      if (volta) item.volta = true;
+      if (volta) item.volta = volta;
       items.push(Object.assign(item, pending)); pending = {};
     };
     for (const tok of bar.split(/\s+/).filter(Boolean)) {
@@ -147,13 +149,13 @@ function parseSongText(text, opts = {}) {
         let m;
         if ((m = /^@bpm(\d+)$/i.exec(tok)) && +m[1] >= 20 && +m[1] <= 300) pending.bpm = +m[1];
         else if (tok === "@[") pending.repStart = true;
-        else if (tok === "@1") volta = true;
+        else if (tok === "@1" || tok === "@2") volta = +tok[1];
         else if ((m = /^@\](\d*)$/.exec(tok)) && (!m[1] || (+m[1] >= 2 && +m[1] <= 9))) {
           const last = items[items.length - 1] || (!items.length && steps[steps.length - 1]);
           if (last) last.repEnd = m[1] ? +m[1] : 2;
           else errors.push(`「${tok}」の前に音がありません`);
-          volta = false;
-        } else errors.push(`「${tok}」は読めません（@bpm120 / @[ / @] / @]3 / @1）`);
+          volta = 0;
+        } else errors.push(`「${tok}」は読めません（@bpm120 / @[ / @] / @]3 / @1 / @2）`);
         continue;
       }
       // a trailing "?" marks a step judged loosely (any strum or note passes)
@@ -198,6 +200,7 @@ function parseSongText(text, opts = {}) {
     const open = items.filter(i => i.len == null);
     const used = items.reduce((a, i) => a + (i.len || 0), 0);
     const share = usesBars ? Math.max(1, Math.floor((barCells - used) / (open.length || 1))) : barCells;
+    if (volta === 2) volta = 0; // a second ending lasts to the end of its bar (write "@2" again to go on)
     for (const { split, ...i } of items) steps.push(Object.assign(i, { len: i.len ?? (usesBars ? share : Math.max(1, Math.round(barCells / (split || 1)))) }));
   }
   if (pending.repStart) errors.push("「@[」の後に音がありません");
@@ -205,7 +208,8 @@ function parseSongText(text, opts = {}) {
 }
 
 // The order steps are played in, repeats unrolled. A repeat runs from its "@[" (or the end of the
-// previous repeat, or the top) to its "@]"; a first ending ("@1") is skipped on the last time through.
+// previous repeat, or the top) to its "@]" (none: the end of the song, marked autoEnd); a first ending
+// ("@1") is skipped on the last time through, a second ending inside the repeat plays only then.
 function playOrder(steps, errors) {
   const blocks = [];
   let open = -1, after = 0;
@@ -213,6 +217,7 @@ function playOrder(steps, errors) {
     if (st.repStart) { if (open >= 0) errors.push(`${i + 1}番目の音：繰り返しの中に「@[」があります`); open = i; }
     if (st.repEnd) { blocks.push({ start: open >= 0 ? open : after, end: i, count: st.repEnd }); open = -1; after = i + 1; }
   });
+  if (open >= 0) { blocks.push({ start: open, end: steps.length - 1, count: 2 }); steps[steps.length - 1].autoEnd = true; }
   const order = [];
   let block = null;
   for (let i = 0; i < steps.length; i++) {
@@ -221,7 +226,8 @@ function playOrder(steps, errors) {
       if (b && b !== block) block = { ...b, pass: 1 };
     }
     const inBlock = block && i >= block.start && i <= block.end;
-    if (!(inBlock && steps[i].volta && block.pass === block.count)) order.push(i);
+    const last = inBlock && block.pass === block.count;
+    if (!(inBlock && ((steps[i].volta === 1 && last) || (steps[i].volta === 2 && !last)))) order.push(i);
     if (inBlock && i === block.end) {
       if (block.pass < block.count) { block.pass++; i = block.start - 1; continue; }
       block = null;
