@@ -170,7 +170,12 @@ button.danger { color: var(--bad); }
 .howto summary { cursor: pointer; color: var(--accent); }
 .howto { position: relative; }
 button.icon.howto-copy { position: absolute; top: -4px; right: 0; min-width: 34px; padding: 4px 8px; }
-.howto ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.howto h3 { margin: 12px 0 0; font-size: .85rem; color: var(--muted); }
+.howto h3:first-child { margin-top: 8px; }
+.ta-wrap { position: relative; }
+.ed-dlg .ta-wrap textarea { padding-right: 44px; }
+button.icon.ta-clear { position: absolute; top: 6px; right: 6px; min-width: 30px; padding: 4px; border: 0; background: transparent; color: var(--muted); }
+.howto ul { margin: 4px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
 .saved { color: var(--good); font-size: .88rem; }
 
 /* ===== metronome ===== */

@@ -183,27 +183,61 @@
     <dialog id="edTextDlg" class="ed-dlg">
       <form method="dialog">
         <h2>テキスト入力</h2>
-        <textarea id="edTextArea" rows="6" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+        <div class="ta-wrap">
+          <textarea id="edTextArea" rows="6" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+          <button id="edTextClear" type="button" class="icon ta-clear" title="すべて消す" aria-label="すべて消す"><i data-icon="x"></i></button>
+        </div>
         <p id="edTextErr" class="errors"></p>
         <details class="howto">
           <summary>書き方</summary>
           <button id="edHowtoCopy" type="button" class="icon howto-copy" title="書き方をコピー" aria-label="書き方をコピー"><i data-icon="copy"></i></button>
-          <ul id="edHowto">
-            <li><code>C G Am F</code> … 1小節に1コード。<code>Bb</code> <code>F#m</code> <code>C7</code> <code>Gmaj7</code> なども書けます</li>
-            <li><code>| C G | Am F |</code> … 縦棒で小節を区切ると、1小節に複数のコードを入れられます</li>
-            <li><code>C*4</code> … 1小節の中でCを4回弾きます。コードが変わる直前の1回は判定がゆるめになります</li>
-            <li><code>C?</code> <code>6-3?</code> … 末尾に ? を付けると判定がゆるめになり、弾けば何の音でも進みます</li>
-            <li><code>6-3</code> … 6弦3フレット（弦は 1＝細い弦 〜 6＝太い弦）、<code>6-3+5-2</code> … 同時に弾く音、<code>r</code> … 休符</li>
-            <li><code>4-7h</code> <code>4-5p</code> <code>5-5s</code> … ハンマリング・プリング・スライド</li>
-            <li><code>3-7b</code> <code>3-7b1</code> <code>3-7d</code> … 1音チョーキング・半音チョーキング・チョーキングを戻す</li>
-            <li><code>6-0_</code> … ブリッジミュート、<code>x</code> … ブラッシング、<code>3-7v</code> … ビブラート、<code>3-&lt;12&gt;</code> … ハーモニクス（3・4・5・7・9・12・16・19・24フレット）</li>
-            <li><code>C/G</code> … スラッシュコード（ベースを G に）</li>
-            <li><code>@bpm120</code> … ここからテンポ120（曲の途中でも書けます）</li>
-            <li><code>@[ … @]</code> … 間を2回、<code>@]3</code> で3回繰り返し（<code>@]</code> がなければ最後まで）。<code>@[ A @1 B @2 C @]</code> は A B A C（1番・2番カッコ）</li>
-            <li><code>% …</code> … % から行の終わりまではコメント</li>
-            <li><code>~:8</code> … タイ。直前の音を8マス分のばします</li>
-            <li><code>:2</code> … 長さ（例 <code>6-3:2</code> は8分音符2つ分）。<code>@cell16</code> を先頭に書くと1マスが16分音符になります</li>
-          </ul>
+          <div id="edHowto" class="howto-body">
+            <h3>コード</h3>
+            <ul>
+              <li><code>C G Am F</code> … 1小節に1コード</li>
+              <li><code>C</code> <code>Cm</code> <code>C7</code> <code>Cm7</code> <code>Cmaj7</code> <code>C6</code> <code>Cm6</code> <code>C5</code> <code>Csus2</code> <code>Csus4</code> <code>C7sus4</code> <code>Cadd9</code> <code>Cdim</code> <code>Cdim7</code> <code>Caug</code> <code>Cm7-5</code> … 種類（根音は <code>C#</code> <code>Db</code> なども可）</li>
+              <li><code>C/G</code> … スラッシュコード（ベースを G に）</li>
+              <li><code>C*4</code> … 1小節でCを4回弾く（コードが変わる直前の1回は判定ゆるめ）</li>
+            </ul>
+            <h3>単音</h3>
+            <ul>
+              <li><code>6-3</code> … 6弦3フレット（1＝細い弦 〜 6＝太い弦）</li>
+              <li><code>6-3+5-2</code> … 同時に弾く音</li>
+              <li><code>r</code> … 休符</li>
+              <li><code>~</code> … タイ（直前の音をのばす）</li>
+              <li><code>x</code> … ブラッシング</li>
+            </ul>
+            <h3>小節と長さ</h3>
+            <ul>
+              <li><code>| C G | Am F |</code> … 縦棒で小節を区切る（1小節に複数入れられる）</li>
+              <li><code>:2</code> … マス数で長さを指定（<code>6-3:2</code> <code>r:4</code> <code>~:8</code> <code>C*2:4</code>）。1マス＝8分音符</li>
+            </ul>
+            <h3>奏法（音の後ろに付ける）</h3>
+            <ul>
+              <li><code>4-7h</code> <code>4-5p</code> <code>5-5s</code> … ハンマリング・プリング・スライド</li>
+              <li><code>3-7b</code> <code>3-7b1</code> … 1音・半音チョーキング</li>
+              <li><code>3-7d</code> <code>3-7d1</code> <code>3-7d2</code> … チョーキングを戻す（半音・1音）</li>
+              <li><code>3-7v</code> … ビブラート</li>
+              <li><code>3-&lt;12&gt;</code> … ハーモニクス（3・4・5・7・9・12・16・19・24フレット）</li>
+              <li><code>6-0_</code> <code>E5_</code> … ブリッジミュート</li>
+              <li><code>C?</code> <code>6-3?</code> … 判定ゆるめ（弾けば何の音でも進む）。<code>_</code> の後ろに付ける</li>
+            </ul>
+            <h3>テンポと繰り返し</h3>
+            <ul>
+              <li><code>@bpm120</code> … ここからテンポ120（曲の途中にも書ける）</li>
+              <li><code>@[ … @]</code> … 間を2回繰り返す。<code>@]3</code> で3回。<code>@]</code> がなければ次の <code>@[</code> か最後まで</li>
+              <li><code>@1</code> <code>@2</code> … 1番・2番カッコ（<code>@[ A @1 B @2 C @]</code> は A B A C）。<code>@0</code> でカッコを閉じる</li>
+            </ul>
+            <h3>先頭に書く設定</h3>
+            <ul>
+              <li><code>@cell16</code> … 1マスを16分音符に（<code>@cell4</code> <code>@cell8</code> <code>@cell32</code> も可）</li>
+              <li><code>@capo3</code> … カポ3フレット（フレットはカポから数える）</li>
+            </ul>
+            <h3>コメント</h3>
+            <ul>
+              <li><code>% …</code> … % から行の終わりまで</li>
+            </ul>
+          </div>
         </details>
         <div class="dlg-actions">
           <button value="cancel" type="submit">キャンセル</button>

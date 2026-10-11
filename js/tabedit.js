@@ -758,9 +758,13 @@ $("edRedo").addEventListener("click", () => edUndo(true));
 $("edAddBar").addEventListener("click", edAddBar);
 $("edText").addEventListener("click", edOpenText);
 $("edTextApply").addEventListener("click", edApplyText);
+$("edTextClear").addEventListener("click", () => {
+  if (!$("edTextArea").value || !confirm("テキストをすべて消しますか？")) return;
+  $("edTextArea").value = ""; $("edTextErr").textContent = ""; $("edTextArea").focus();
+});
 // the notation list as plain text, one line per item
 $("edHowtoCopy").addEventListener("click", async () => {
-  const text = [...$("edHowto").children].map(li => "- " + li.textContent.trim()).join("\n");
+  const text = [...$("edHowto").querySelectorAll("h3, li")].map(e => (e.tagName === "H3" ? "\n## " : "- ") + e.textContent.trim()).join("\n").trim();
   const b = $("edHowtoCopy");
   try { await navigator.clipboard.writeText(text); } catch { return; }
   b.innerHTML = iconSvg("check");
