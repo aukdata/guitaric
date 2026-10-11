@@ -176,9 +176,14 @@ function renderTab(container, song, opts = {}) {
           const x0 = cx + 4 + lw * 4;
           mk("line", { x1: x0, x2: x0 + 10, y1: y - 5, y2: y + 5, class: "tab-slur" }, g);
         } else if (m.move === "t") {
-          // a trill: "tr" over the staff, the other fret in parentheses after this one
+          // a trill: the other fret in parentheses after this one, and "tr" over the staff with a wavy
+          // line on to the end of the note's length
           const t = mk("text", { x: cx + 8 + lw * 4, y: y + 4, class: "tab-trill" }, g); t.textContent = `(${m.trill})`;
-          if (!labels.includes("tr")) labels.push("tr");
+          if (!g.querySelector(".tab-trline")) {
+            const tr = mk("text", { x: cx - 4, y: TAB.top - 9, class: "tab-tech tab-trline" }, g); tr.textContent = "tr.";
+            const x0 = cx + 9, n4 = Math.max(1, Math.floor((sx + w - 4 - x0) / 4));
+            mk("path", { d: `M${x0} ${TAB.top - 13} q1 -3 2 0` + " t2 0".repeat(2 * n4 - 1), class: "tab-slur" }, g);
+          }
         } else if (m.move) drawBend(g, st, n, cx, i);
       }
       if (marked.some(n => markOf(n).v)) {
