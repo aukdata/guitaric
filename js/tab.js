@@ -145,7 +145,8 @@ function renderTab(container, song, opts = {}) {
         const t = mk("text", { x: sx + 6, y: 14, class: "tab-capo" }, g); t.textContent = volta[i] + ".";
       }
     }
-    if (st.chord) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-chord" }, g); t.textContent = st.chord; }
+    // (a staccato dot over the 1st string's number pushes the chord name up)
+    if (st.chord) { const t = mk("text", { x: cx, y: TAB.top - (st.stac && st.notes.some(n => n[0] === 1) ? 18 : 12), class: "tab-chord" }, g); t.textContent = st.chord; }
     else {
       // techniques, string by string: H / P / sl. over the step; a slur, a slant line (slide from the
       // previous note, slide in from below, slide out downward) or a bend arrow at each string's note
@@ -191,8 +192,11 @@ function renderTab(container, song, opts = {}) {
         mk("path", { d: `M${cx - 8} ${TAB.top - 14} q2 -4 4 0 t4 0 t4 0 t4 0`, class: "tab-slur" }, g);
       } else if (labels.length) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-tech" }, g); t.textContent = labels.join(" "); }
     }
-    // staccato: a dot over the staff
-    if (st.stac) mk("circle", { cx, cy: TAB.top - 5, r: 2, class: "tab-repeat" }, g);
+    // staccato: a dot just over the top fret number (over the tie's slur when the next step holds it)
+    if (st.stac && st.notes.length) {
+      const top = TAB.top + (Math.min(...st.notes.map(n => n[0])) - 1) * TAB.row, next = song.steps[i + 1];
+      mk("circle", { cx, cy: top - (next && next.tie ? 18 : 13), r: 2, class: "tab-repeat" }, g);
+    }
     // bridge mute: "P.M." where a run starts (and at a new row), a dashed line on over the run
     if (st.pm) {
       const prev = song.steps[i - 1], next = song.steps[i + 1];
