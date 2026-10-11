@@ -1,7 +1,7 @@
 // Network-first for app files so updates show up right away; falls back to cache when offline.
 // Requests skip the browser's HTTP cache ("no-cache" revalidates with the server): GitHub Pages lets
 // files be cached for 10 minutes, which could pair a new index.html with old scripts.
-const CACHE = "guitaric-v63";
+const CACHE = "guitaric-v64";
 const ASSETS = ["./", "index.html", "css/style.css", "js/icons.js", "js/core.js", "js/songs.js", "js/tab.js", "js/analyze.js", "js/metronome.js", "js/player.js", "js/practice.js", "js/editor.js", "js/tabedit.js", "js/songfile.js", "js/app.js", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png"];
 
 self.addEventListener("install", e => {
