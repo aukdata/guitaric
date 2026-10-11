@@ -15,7 +15,7 @@ function stepToken(st, withLen) {
 }
 
 // tempo and repeat marks around a token ("@[ @bpm120 C*4 @]3"): those before it from its first step,
-// the repeat end from its last; volta: the ending it opens ("@2") or closes ("@0"), or ""
+// the repeat end from its last; volta: the ending it opens ("@alt2") or closes ("@alt0"), or ""
 function marked(st, last, tok, volta, noBpm) {
   return (st.repStart ? "@[ " : "") + volta + (st.bpm && !noBpm ? `@bpm${st.bpm} ` : "") + tok
     + (last.repEnd ? (last.repEnd === 2 ? " @]" : ` @]${last.repEnd}`) : "");
@@ -37,11 +37,11 @@ function stepsToText(steps, grid, timeSig, prefix, tail) {
   const barCells = timeSig[0] * grid / 4, bars = [];
   let cell = 0;
   for (const st of steps) { const b = Math.floor(cell / barCells); (bars[b] = bars[b] || []).push(st); cell += st.len; }
-  // where an ending starts ("@n"), and where one stops before a repeat end closed it ("@0")
+  // where an ending starts ("@altn"), and where one stops before a repeat end closed it ("@alt0")
   const voltaTok = new Map();
   steps.forEach((st, i) => {
     const prev = steps[i - 1], carried = prev && prev.volta && !prev.repEnd && !st.repStart ? prev.volta : 0;
-    if ((st.volta || 0) !== carried) voltaTok.set(st, `@${st.volta || 0} `);
+    if ((st.volta || 0) !== carried) voltaTok.set(st, `@alt${st.volta || 0} `);
   });
   const opensVolta = { has: st => voltaTok.has(st) };
   const lead = steps[0] && steps[0].bpm ? `@bpm${steps[0].bpm} ` : "";
@@ -65,7 +65,7 @@ function stepsToText(steps, grid, timeSig, prefix, tail) {
       return (r.st !== bar[0] && r.st.comments ? "\n" + lines(r.st) : "") + marked(r.st, r.last, t, voltaTok.get(r.st) || "", r.st === steps[0]);
     };
     const short = runs.map(r => tok(r, true)).join(" ");
-    const pre = (bi === 0 ? lead : "") + (bar[0].volta && !voltaTok.has(bar[0]) ? `@${bar[0].volta} ` : "");
+    const pre = (bi === 0 ? lead : "") + (bar[0].volta && !voltaTok.has(bar[0]) ? `@alt${bar[0].volta} ` : "");
     if (same(parseSongText(`${pre}|${short}|`, { grid, timeSig }).steps, bar.map(strip))) return short;
     return runs.map(r => tok(r, false)).join(" ");
   });

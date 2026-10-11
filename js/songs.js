@@ -123,8 +123,9 @@ function chordPitchClasses(name) {
  *   C/G                 slash chord (C over a G bass)
  *   @bpm120             tempo from the next note on (anywhere: a tempo change mid-song)
  *   @[ ... @]  @]3      repeat the part between (twice / 3 times); "@]" alone repeats from the top
- *   @[ A @1 B @2 C @]   endings: "@n" to the next ending or "@]", played the n-th time only (A B A C);
- *                       "@0" ends an ending early; outside a repeat they are only shown
+ *   @[ A @alt1 B @alt2 C @]  endings: "@altn" to the next ending or "@]", played the n-th time only
+ *                       (A B A C); "@alt0" ends an ending early; outside a repeat they are only shown
+ *                       (older text: "@1" "@2" "@0")
  *   a "@[" with no "@]" repeats up to the next "@[" or the end of the song
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  *   @cell16 ...         at the very start: one cell is a 16th note (@cell32: a 32nd; older text: "@16")
@@ -156,13 +157,13 @@ function parseSongText(text, opts = {}) {
         if ((m = /^@#(\d+)$/.exec(tok))) (pending.comments = pending.comments || []).push(comments[+m[1]]);
         else if ((m = /^@bpm(\d+)$/i.exec(tok)) && +m[1] >= 20 && +m[1] <= 300) pending.bpm = +m[1];
         else if (tok === "@[") { pending.repStart = true; afterEnd = false; volta = 0; }
-        else if (/^@\d$/.test(tok)) { volta = +tok[1]; barOnly = afterEnd; }
+        else if ((m = /^@(?:alt)?(\d)$/.exec(tok))) { volta = +m[1]; barOnly = afterEnd; }
         else if ((m = /^@\](\d*)$/.exec(tok)) && (!m[1] || (+m[1] >= 2 && +m[1] <= 9))) {
           const last = items[items.length - 1] || (!items.length && steps[steps.length - 1]);
           if (last) last.repEnd = m[1] ? +m[1] : 2;
           else errors.push(`「${tok}」の前に音がありません`);
           volta = 0; afterEnd = true;
-        } else errors.push(`「${tok}」は読めません（@bpm120 / @[ / @] / @]3 / @1 / @2）`);
+        } else errors.push(`「${tok}」は読めません（@bpm120 / @[ / @] / @]3 / @alt1 / @alt2）`);
         continue;
       }
       // a trailing "?" marks a step judged loosely (any strum or note passes)
