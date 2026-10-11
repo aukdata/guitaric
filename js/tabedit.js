@@ -633,7 +633,7 @@ function edPlay() {
   });
   ed.play = { ...r, from, cur: from, gain };
   scheduleSongClicks(ed.song, from, transport.rate, r.start, gain);
-  ed.play.timers.push(setTimeout(() => edStop(true), (r.end - ctx.currentTime) * 1000));
+  ed.play.timers.push(whenHeard([{ t: r.end, fn: () => edStop(true) }]));
   setIcon($("edPlay"), "square"); $("edPlay").setAttribute("aria-label", "停止"); $("edPlay").classList.add("on");
   edRender();
 }

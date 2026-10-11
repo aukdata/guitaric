@@ -2,12 +2,33 @@
 // seconds per grid cell at a step's tempo ("@bpm"), times the playback speed
 const cellSecs = (song, st, rate) => 60 / ((st.tempo || song.bpm || 80) * rate) * 4 / song.grid;
 
+// The audio time being heard now: the context runs ahead of the speakers by the output delay (large
+// with Bluetooth or on phones), so what is shown follows this clock, not the context's own.
+function heardTime() {
+  if (ctx.getOutputTimestamp) {
+    const ts = ctx.getOutputTimestamp();
+    if (ts.contextTime > 0 && ts.performanceTime > 0) return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+  }
+  return ctx.currentTime - (ctx.outputLatency || 0) - (ctx.baseLatency || 0);
+}
+// calls each event's fn once its audio time is heard ([{ t, fn }], in time order); returns an id for
+// clearTimeout / clearInterval
+function whenHeard(events) {
+  let k = 0;
+  const id = setInterval(() => {
+    const now = heardTime();
+    while (k < events.length && events[k].t <= now) events[k++].fn();
+    if (k >= events.length) clearInterval(id);
+  }, 15);
+  return id;
+}
+
 // Schedules the song from step `from` to the end into `out`, in playing order (repeats unrolled; a
 // step inside a repeat starts from its first time through). onStep(i) fires as each step starts.
 // Returns { sources, timers, start, end } (audio times of the first step and of the end of the last step's length).
 function scheduleSong(song, from, rate, out, onStep) {
   const steps = song.steps, order = song.order || steps.map((_, i) => i);
-  const sources = [], timers = [];
+  const sources = [], timers = [], shown = [];
   let t = ctx.currentTime + 0.15;
   const t0 = t;
   let lag = 0; // a grace note just before: the next note sounds a moment later
@@ -15,7 +36,7 @@ function scheduleSong(song, from, rate, out, onStep) {
     const i = order[p], st = steps[i], cell = cellSecs(song, st, rate), dur = st.len * cell;
     const start = t + lag;
     lag = 0;
-    timers.push(setTimeout(() => onStep(i), (start - ctx.currentTime) * 1000));
+    shown.push({ t: start, fn: () => onStep(i) });
     t += dur;
     if (st.brush) { sources.push(brushSound(start, out)); continue; }
     if (!st.notes.length) continue;
@@ -39,6 +60,7 @@ function scheduleSong(song, from, rate, out, onStep) {
     for (const g of groups.values()) sources.push(...noteSound({ ...st, notes: g.notes }, markOf(g.notes[0]), start + g.j * 0.018, dur, ring, prev, out, i + 1, ties));
     if (st.mute) sources.push(brushSound(start, out, 0.8));
   }
+  timers.push(whenHeard(shown));
   return { sources, timers, start: t0, end: t };
 }
 

@@ -369,7 +369,7 @@ function playModel() {
   scheduleSongClicks(practice.song, from, rate, r.start, gain);
   model.sources = r.sources; model.timers = r.timers; model.gain = gain; model.from = from; model.cur = from;
   const end = r.end + 1.6;
-  model.timers.push(setTimeout(() => stopModel(true), (r.end - ctx.currentTime) * 1000));
+  model.timers.push(whenHeard([{ t: r.end, fn: () => stopModel(true) }]));
   practice.mutedUntil = end + 0.2;
   practice.tracker.reset();
   setIcon($("pModel"), "square"); $("pModel").setAttribute("aria-label", "停止"); $("pModel").classList.add("on");
