@@ -129,10 +129,15 @@ function chordPitchClasses(name) {
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  *   @cell16 ...         at the very start: one cell is a 16th note (@cell32: a 32nd; older text: "@16")
  *   @capo3 ...          at the very start: capo on the 3rd fret (frets are counted from the capo)
+ *   # ...               a line starting with "#" is a comment (kept with the next note: st.comments,
+ *                       after the last note: tail)
  */
 function parseSongText(text, opts = {}) {
   const grid = opts.grid || 8, beats = (opts.timeSig || [4, 4])[0];
   const barCells = beats * grid / 4;
+  // comment lines become "@#n" tokens, so they keep their place among the notes
+  const comments = [];
+  text = text.replace(/^[ \t]*#(.*)$/gm, (_, c) => ` @#${comments.push(c.trim()) - 1} `);
   const usesBars = text.includes("|");
   const bars = text.split("|").map(b => b.trim()).filter(Boolean);
   const steps = [], errors = [];
@@ -148,7 +153,8 @@ function parseSongText(text, opts = {}) {
     for (const tok of bar.split(/\s+/).filter(Boolean)) {
       if (tok[0] === "@") {
         let m;
-        if ((m = /^@bpm(\d+)$/i.exec(tok)) && +m[1] >= 20 && +m[1] <= 300) pending.bpm = +m[1];
+        if ((m = /^@#(\d+)$/.exec(tok))) (pending.comments = pending.comments || []).push(comments[+m[1]]);
+        else if ((m = /^@bpm(\d+)$/i.exec(tok)) && +m[1] >= 20 && +m[1] <= 300) pending.bpm = +m[1];
         else if (tok === "@[") { pending.repStart = true; afterEnd = false; volta = 0; }
         else if (/^@\d$/.test(tok)) { volta = +tok[1]; barOnly = afterEnd; }
         else if ((m = /^@\](\d*)$/.exec(tok)) && (!m[1] || (+m[1] >= 2 && +m[1] <= 9))) {
@@ -205,7 +211,7 @@ function parseSongText(text, opts = {}) {
     for (const { split, ...i } of items) steps.push(Object.assign(i, { len: i.len ?? (usesBars ? share : Math.max(1, Math.round(barCells / (split || 1)))) }));
   }
   if (pending.repStart) errors.push("「@[」の後に音がありません");
-  return { steps, errors };
+  return { steps, errors, tail: pending.comments || [] };
 }
 
 // The repeats: each runs from its "@[" (or the end of the previous repeat, or the top) to its "@]";
@@ -285,10 +291,14 @@ function allSongs() { return [...loadUserSongs(), ...PRESET_SONGS.map(s => ({ ..
 function buildSong(s) {
   // leading "@cell16" (grid: cells per whole note; "@16" in older text) and "@capo3" in the text, so pasted text carries them
   let text = s.text || "", grid = s.grid || 8, capo = 0, m;
-  while ((m = /^\s*@(?:cell)?(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text))) {
-    if (m[2] != null) capo = Math.min(12, +m[2]); else grid = +m[1];
+  // (comment lines before them are kept)
+  let kept = "";
+  while ((m = /^\s*@(?:cell)?(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text)) || (m = /^\s*#.*(\n|$)/.exec(text))) {
+    if (m[0].trim()[0] === "#") kept += m[0].trim() + "\n";
+    else if (m[2] != null) capo = Math.min(12, +m[2]); else grid = +m[1];
     text = text.slice(m[0].length);
   }
+  text = kept + text;
   const timeSig = s.timeSig || [4, 4], parsed = parseSongText(text, { timeSig, grid });
   // the tempo in force at each step ("@bpm" changes it from that step on; older songs: s.bpm)
   let tempo = s.bpm || 80;

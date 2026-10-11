@@ -21,7 +21,7 @@ function marked(st, last, tok, volta, noBpm) {
     + (last.repEnd ? (last.repEnd === 2 ? " @]" : ` @]${last.repEnd}`) : "");
 }
 // marks that belong to a place in the song, not to the note there (kept when the note is replaced)
-const MARKS = ["bpm", "repStart", "repEnd", "volta"];
+const MARKS = ["bpm", "repStart", "repEnd", "volta", "comments"];
 const withMarks = (from, st) => { for (const k of MARKS) if (from[k]) st[k] = from[k]; return st; };
 
 const noteSig = st => JSON.stringify([st.notes, st.chord || "", st.len, st.tech || "", st.bend || 0, !!st.loose, !!st.tie,
@@ -31,7 +31,9 @@ const stepSig = st => noteSig(st) + JSON.stringify([st.bpm || 0, !!st.repStart, 
 // Writes the steps as bar-separated text, keeping it short where the parser gives the same steps back
 // ("| C*4 | G Am |" rather than "| C:2 C:2 C:2 C:2 | G:4 Am:4 |").
 // The first step's tempo goes in front of the first bar ("@bpm90 | C G |").
-function stepsToText(steps, grid, timeSig, prefix) {
+// Comments ("# ...") go on their own lines before their step (tail: after the last bar).
+function stepsToText(steps, grid, timeSig, prefix, tail) {
+  const lines = st => (st.comments || []).map(c => `# ${c}\n`).join("");
   const barCells = timeSig[0] * grid / 4, bars = [];
   let cell = 0;
   for (const st of steps) { const b = Math.floor(cell / barCells); (bars[b] = bars[b] || []).push(st); cell += st.len; }
@@ -52,21 +54,26 @@ function stepsToText(steps, grid, timeSig, prefix) {
     // (marks can open a run, and a repeat end close it)
     for (const st of bar) {
       const r = runs[runs.length - 1];
-      if (r && !st.bpm && !st.repStart && !opensVolta.has(st) && !r.last.repEnd && st.chord && r.st.chord === st.chord && noteSig(r.st) === noteSig(st)) { r.n++; r.last = st; }
+      if (r && !st.bpm && !st.repStart && !st.comments && !opensVolta.has(st) && !r.last.repEnd && st.chord && r.st.chord === st.chord && noteSig(r.st) === noteSig(st)) { r.n++; r.last = st; }
       else runs.push({ st, last: st, n: 1 });
     }
     const tok = (r, open) => {
       let t;
       if (!r.st.chord || r.n === 1) t = open && r.st.chord ? stepToken(r.st, false) : stepToken(r.st, true);
       else t = `${r.st.chord}*${r.n}${(r.st.pm ? "_" : "") + (r.st.loose ? "?" : "")}` + (open ? "" : ":" + r.st.len * r.n);
-      return marked(r.st, r.last, t, voltaTok.get(r.st) || "", r.st === steps[0]);
+      // (a comment inside the bar breaks the line there; one on the bar's first note goes before the bar)
+      return (r.st !== bar[0] && r.st.comments ? "\n" + lines(r.st) : "") + marked(r.st, r.last, t, voltaTok.get(r.st) || "", r.st === steps[0]);
     };
     const short = runs.map(r => tok(r, true)).join(" ");
     const pre = (bi === 0 ? lead : "") + (bar[0].volta && !voltaTok.has(bar[0]) ? `@${bar[0].volta} ` : "");
     if (same(parseSongText(`${pre}|${short}|`, { grid, timeSig }).steps, bar.map(strip))) return short;
     return runs.map(r => tok(r, false)).join(" ");
   });
-  return (prefix || "") + lead + "| " + out.join(" | ") + " |";
+  const fb = bars.filter(Boolean);
+  const body = out.map((b, k) => (k && fb[k][0].comments ? " |\n" + lines(fb[k][0]) + "| " : k ? " | " : "") + b).join("");
+  const head = steps[0] && steps[0].comments ? (prefix ? prefix.trim() + "\n" : "") + lines(steps[0]) : prefix || "";
+  const end = tail && tail.length ? "\n" + tail.map(c => `# ${c}`).join("\n") : "";
+  return (head + lead + "| " + body + " |" + end).replace(/ +\n/g, "\n");
 }
 
 function lenChoices(grid, cur) {
@@ -280,7 +287,9 @@ function edChange(fn, opts = {}) {
   if (sel === false) return;
   // the grid (when not the song's own) and the capo lead the text: "@cell16 @capo3 | ... |"
   const prefix = [grid !== ed.grid ? `@cell${grid}` : "", capo ? `@capo${capo}` : ""].filter(Boolean).join(" ");
-  edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix ? prefix + " " : "") : prefix, sel, opts.merge);
+  const tail = ed.song.tail || [];
+  edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix ? prefix + " " : "", tail)
+    : [prefix, ...tail.map(c => `# ${c}`)].filter(Boolean).join("\n"), sel, opts.merge);
 }
 
 function edSetText(text, sel, merge) {
@@ -489,7 +498,7 @@ function edInsert(after, step) {
   // a copy of the current step (or of the given one: paste / duplicate), without its tempo or repeat marks
   edChange(steps => {
     const c = cloneStep(step || steps[i]);
-    delete c.bpm; delete c.repStart; delete c.repEnd;
+    delete c.bpm; delete c.repStart; delete c.repEnd; delete c.comments;
     if (!(steps[at] && steps[at - 1] && steps[at].volta && steps[at - 1].volta === steps[at].volta)) delete c.volta;
     steps.splice(at, 0, c); return { i: at, s };
   });
@@ -501,7 +510,11 @@ function edDelete() {
   edChange(steps => {
     // a tempo change or repeat start moves on to the next step, a repeat end back to the one before
     const [gone] = steps.splice(i, 1), next = steps[i], prev = steps[i - 1];
-    if (next) { if (gone.bpm && !next.bpm) next.bpm = gone.bpm; if (gone.repStart) next.repStart = true; }
+    if (next) {
+      if (gone.bpm && !next.bpm) next.bpm = gone.bpm;
+      if (gone.repStart) next.repStart = true;
+      if (gone.comments) next.comments = [...gone.comments, ...(next.comments || [])];
+    }
     if (prev && gone.repEnd && !prev.repEnd) prev.repEnd = gone.repEnd;
     return steps.length ? { i: Math.min(i, steps.length - 1), s } : null;
   });
