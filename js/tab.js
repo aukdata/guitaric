@@ -128,15 +128,18 @@ function renderTab(container, song, opts = {}) {
     } else if (st.tech) {
       const label = { h: "H", p: "P", s: "sl." }[st.tech];
       if (label) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-tech" }, g); t.textContent = label; }
-      // a slur (H/P) or a slant line (slide) from the previous note on the same string
-      const [s, f] = st.notes[0], y = TAB.top + (s - 1) * TAB.row;
-      const prev = song.steps[i - 1], pn = prev && !prev.chord && prev.notes.find(n => n[0] === s);
-      if ((st.tech === "h" || st.tech === "p") && pn && at[i - 1].row === at[i].row) {
-        const px = at[i - 1].x + Math.min(at[i - 1].w, TAB.minStep) / 2;
-        mk("path", { d: `M${px + 4} ${y - 9} Q${(px + cx) / 2} ${y - 20} ${cx - 4} ${y - 9}`, class: "tab-slur" }, g);
-      } else if (st.tech === "s") {
-        const up = !pn || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
-        mk("line", { x1: x0, x2: x1, y1: up ? y + 5 : y - 5, y2: up ? y - 5 : y + 5, class: "tab-slur" }, g);
+      // a slur (H/P) or a slant line (slide) from the previous note on the same string (on every string
+      // of notes played together)
+      for (const [s, f] of st.notes) {
+        const y = TAB.top + (s - 1) * TAB.row;
+        const prev = song.steps[i - 1], pn = prev && !prev.chord && prev.notes.find(n => n[0] === s);
+        if ((st.tech === "h" || st.tech === "p") && pn && at[i - 1].row === at[i].row) {
+          const px = at[i - 1].x + Math.min(at[i - 1].w, TAB.minStep) / 2;
+          mk("path", { d: `M${px + 4} ${y - 9} Q${(px + cx) / 2} ${y - 20} ${cx - 4} ${y - 9}`, class: "tab-slur" }, g);
+        } else if (st.tech === "s") {
+          const up = !pn || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
+          mk("line", { x1: x0, x2: x1, y1: up ? y + 5 : y - 5, y2: up ? y - 5 : y + 5, class: "tab-slur" }, g);
+        }
       }
     }
     // bridge mute: "P.M." where a run starts (and at a new row), a dashed line on over the run

@@ -176,14 +176,23 @@ function parseSongText(text, opts = {}) {
       if (/^[xX]$/.test(body)) { push({ notes: [], brush: true, len: len || 1 }); continue; }
       // "~" holds the previous note on (a tie): nothing new to play, so wait mode skips it like a rest
       if (body === "~") { push({ notes: [], tie: true, len: len || 1 }); continue; }
+      // techniques and "_" go once at the end of notes played together ("5-12+3-14s", "4-0+3-2+2-3_")
+      if (/^\d-<?\d+>?([hpsvbd][12]?|_)\+\d/.test(tok) || /[hpsvbd_][12]?\+\d/.test(tok.split(":")[0])) {
+        errors.push(`「${tok}」：奏法や _ は最後に1つだけ書きます（例 5-12+3-14s、4-0+3-2+2-3_）`); continue;
+      }
+      if (/^\d-\d+(\+\d-\d+)+[bd][12]?$/.test(tok.split(":")[0].replace(/[_?]/g, ""))) {
+        errors.push(`「${tok}」：チョーキングは単音にだけ付けられます`); continue;
+      }
       const extra = { ...(loose ? { loose: true } : {}), ...(pm ? { pm: true } : {}) };
-      // a technique letter after a single note: h p s (display only), b / b1 bend, d release, v vibrato
-      const tech = /^\d-<?\d+>?(h|p|s|v|b[12]?|d[12]?)$/.exec(body);
+      // a technique letter at the end: h p s (display only), v vibrato (also on notes played together:
+      // "5-5+3-7s"), b / b1 bend, d release (a single note)
+      const tech = /^\d-<?\d+>?(h|p|s|v|b[12]?|d[12]?)$/.exec(body) || /^\d-<?\d+>?(\+\d-<?\d+>?)+([hpsv])$/.exec(body);
       if (tech) {
-        body = body.slice(0, -tech[1].length);
-        extra.tech = tech[1][0];
-        if (extra.tech === "b") extra.bend = tech[1][1] === "1" ? 1 : 2;
-        else if (extra.tech === "d" && tech[1][1]) extra.bend = +tech[1][1];
+        const t = tech[2] || tech[1];
+        body = body.slice(0, -t.length);
+        extra.tech = t[0];
+        if (extra.tech === "b") extra.bend = t[1] === "1" ? 1 : 2;
+        else if (extra.tech === "d" && t[1]) extra.bend = +t[1];
       }
       // "3-<12>": natural harmonics (every note of the step)
       const harm = /^\d-<\d+>(\+\d-<\d+>)*$/.test(body);
@@ -292,11 +301,13 @@ function allSongs() { return [...loadUserSongs(), ...PRESET_SONGS.map(s => ({ ..
 function buildSong(s) {
   // leading "@cell16" (grid: cells per whole note; "@16" in older text) and "@capo3" in the text, so pasted text carries them
   let text = s.text || "", grid = s.grid || 8, capo = 0, m;
-  // (comment lines before them are kept)
+  // (anywhere before the first note; comment lines and tempo marks among them are kept)
   let kept = "";
-  while ((m = /^\s*@(?:cell)?(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text)) || (m = /^\s*[#%].*(\n|$)/.exec(text))) {
-    if (/^[#%]/.test(m[0].trim())) kept += m[0].trim() + "\n";
-    else if (m[2] != null) capo = Math.min(12, +m[2]); else grid = +m[1];
+  for (;;) {
+    if ((m = /^\s*@(?:cell)?(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text))) {
+      if (m[2] != null) capo = Math.min(12, +m[2]); else grid = +m[1];
+    } else if ((m = /^\s*([#%].*|@bpm\d+(?=\s|\||$))/i.exec(text))) kept += m[1] + "\n";
+    else break;
     text = text.slice(m[0].length);
   }
   text = kept + text;

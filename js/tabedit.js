@@ -238,7 +238,7 @@ function edShowPop() {
   const single = !st.chord && st.notes.length === 1, several = !st.chord && st.notes.length > 1;
   $("popTech").disabled = !!st.tie;
   $("popTech").querySelectorAll("option").forEach(o => {
-    o.disabled = !(o.value === "" || o.value === "pm" || o.value === "x" || single || (o.value === "n" && several));
+    o.disabled = !(o.value === "" || o.value === "pm" || o.value === "x" || single || (several && "nhpsv".includes(o.value)));
   });
   $("popTech").value = techValue(st, i);
   const k = lenPos(st.len, ed.song.grid), exact = Math.abs(st.len / ed.song.grid - LEN_VALUES[k][0]) < 1e-9;
@@ -258,6 +258,7 @@ function edShowPop() {
 function techValue(st, i) {
   if (st.brush) return "x";
   if (st.harm) return "n";
+  if (st.tech && !st.chord && st.notes.length > 1 && "hpsv".includes(st.tech)) return st.tech;
   if (st.tech && !st.chord && st.notes.length === 1) return st.tech + (st.tech === "b" ? st.bend : st.tech === "d" ? releaseBend(i) : "");
   return st.pm ? "pm" : "";
 }
@@ -323,7 +324,8 @@ function setFret(st, s, f) {
   st.notes = st.notes.filter(n => n[0] !== s);
   if (f != null) st.notes.push([s, f]);
   st.notes.sort((a, b) => b[0] - a[0]);
-  if (st.notes.length !== 1) { delete st.tech; delete st.bend; }
+  // bends and releases are for a single note; h p s and vibrato also for notes played together
+  if (st.notes.length !== 1 && !(st.notes.length > 1 && "hpsv".includes(st.tech))) { delete st.tech; delete st.bend; }
   // every string muted: a brushing stroke
   if (!st.notes.length) { delete st.loose; delete st.pm; st.brush = true; }
   if (st.harm && st.notes.some(n => !HARMONICS[n[1]])) delete st.harm; // no harmonic at that fret
@@ -346,7 +348,8 @@ function edTech(v, toggle) {
   if (v === "x") { edBrush(false); return; }
   if (st.brush && v !== "") { edStatus("先に音を選んでください"); return; }
   const single = !st.chord && st.notes.length === 1;
-  if (v && v !== "pm" && v !== "n" && !single) { edStatus("この奏法は単音にだけ付けられます"); return; }
+  const several = !st.chord && st.notes.length > 1;
+  if (v && v !== "pm" && v !== "n" && !single && !(several && "hpsv".includes(v))) { edStatus("この奏法は単音にだけ付けられます"); return; }
   if (v === "n" && (st.chord || !st.notes.length)) { edStatus("ハーモニクスは単音か同時に弾く音に付けられます"); return; }
   if (v === "n" && st.notes.some(n => !HARMONICS[n[1]])) { edStatus("ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです"); return; }
   edChange(steps => {

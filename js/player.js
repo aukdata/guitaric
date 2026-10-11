@@ -27,9 +27,11 @@ function scheduleSong(song, from, rate, out, onStep) {
     const src = ctx.createBufferSource(); src.buffer = b;
     // a slide glides from the previous note on the same string up or down into this one
     const prev = steps[order[p - 1]];
-    if (st.tech === "s" && prev && prev.notes.length === 1 && prev.notes[0][0] === st.notes[0][0] && prev.notes[0][1] !== st.notes[0][1]) {
+    // (notes played together slide by the same amount: the first one's)
+    const from = st.tech === "s" && prev && prev.notes.find(n => n[0] === st.notes[0][0]);
+    if (from && from[1] !== st.notes[0][1]) {
       const glide = Math.min(0.15, dur * 0.5);
-      src.playbackRate.setValueAtTime(2 ** ((prev.notes[0][1] - st.notes[0][1]) / 12), start);
+      src.playbackRate.setValueAtTime(2 ** ((from[1] - st.notes[0][1]) / 12), start);
       src.playbackRate.exponentialRampToValueAtTime(1, start + glide);
     }
     // bends glide up into the bent pitch; a release starts bent and comes down
