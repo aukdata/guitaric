@@ -122,25 +122,32 @@ function renderTab(container, song, opts = {}) {
       }
     }
     if (st.chord) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-chord" }, g); t.textContent = st.chord; }
-    else if (st.tech === "v") {
-      // vibrato: a wavy line over the note
-      mk("path", { d: `M${cx - 8} ${TAB.top - 14} q2 -4 4 0 t4 0 t4 0 t4 0`, class: "tab-slur" }, g);
-    } else if (st.tech) {
-      const label = { h: "H", p: "P", s: "sl." }[st.tech];
-      if (label) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-tech" }, g); t.textContent = label; }
-      // a slur (H/P) or a slant line (slide) from the previous note on the same string (on every string
-      // of notes played together)
-      for (const [s, f] of st.notes) {
+    else {
+      // techniques, string by string: H / P / sl. over the step; a slur, a slant line (slide from the
+      // previous note, slide in from below, slide out downward) or a bend arrow at each string's note
+      const labels = [];
+      for (const n of st.notes) {
+        const [s, f, t] = n;
+        if (!t) continue;
         const y = TAB.top + (s - 1) * TAB.row;
-        const prev = song.steps[i - 1], pn = prev && !prev.chord && prev.notes.find(n => n[0] === s);
-        if ((st.tech === "h" || st.tech === "p") && pn && at[i - 1].row === at[i].row) {
+        const prev = song.steps[i - 1], pn = prev && !prev.chord && prev.notes.find(m => m[0] === s);
+        const label = { h: "H", p: "P", s: "sl." }[t];
+        if (label && !labels.includes(label)) labels.push(label);
+        if ((t === "h" || t === "p") && pn && at[i - 1].row === at[i].row) {
           const px = at[i - 1].x + Math.min(at[i - 1].w, TAB.minStep) / 2;
           mk("path", { d: `M${px + 4} ${y - 9} Q${(px + cx) / 2} ${y - 20} ${cx - 4} ${y - 9}`, class: "tab-slur" }, g);
-        } else if (st.tech === "s") {
-          const up = !pn || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
+        } else if (t === "s" || t === "si") {
+          const up = t === "si" || !pn || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
           mk("line", { x1: x0, x2: x1, y1: up ? y + 5 : y - 5, y2: up ? y - 5 : y + 5, class: "tab-slur" }, g);
-        }
+        } else if (t === "so") {
+          const x0 = cx + 8 + (String(f).length - 1) * 4;
+          mk("line", { x1: x0, x2: x0 + 10, y1: y - 5, y2: y + 5, class: "tab-slur" }, g);
+        } else if (t[0] === "b" || t[0] === "d") drawBend(g, st, n, cx, i);
       }
+      if (st.notes.some(n => n[2] === "v")) {
+        // vibrato: a wavy line over the note
+        mk("path", { d: `M${cx - 8} ${TAB.top - 14} q2 -4 4 0 t4 0 t4 0 t4 0`, class: "tab-slur" }, g);
+      } else if (labels.length) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-tech" }, g); t.textContent = labels.join(" "); }
     }
     // bridge mute: "P.M." where a run starts (and at a new row), a dashed line on over the run
     if (st.pm) {
@@ -151,8 +158,8 @@ function renderTab(container, song, opts = {}) {
       const x2 = next && next.pm && at[i + 1] && at[i + 1].row === at[i].row ? at[i + 1].x + Math.min(at[i + 1].w, TAB.minStep) / 2 : cx + 8;
       if (x2 > x1) mk("line", { x1, x2, y1: 16, y2: 16, class: "tab-pmline" }, g);
     }
-    // brushing: x on every string
-    if (st.brush) for (let s = 1; s <= 6; s++) {
+    // brushing: x on every string; a muted string among the notes: x on it
+    for (const s of st.brush ? [1, 2, 3, 4, 5, 6] : st.mute || []) {
       const y = TAB.top + (s - 1) * TAB.row;
       mk("rect", { x: cx - 9, y: y - 9, width: 18, height: 18, rx: 4, class: "tab-bg" }, g);
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-x" }, g); t.textContent = "×";
@@ -162,7 +169,6 @@ function renderTab(container, song, opts = {}) {
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret" }, g); t.textContent = label;
     }
-    if (st.tech === "b" || st.tech === "d") drawBend(g, st, cx, i);
     const held = st.tie && song.steps.slice(0, i).reverse().find(x => x.notes.length);
     if (held) {
       // a tie shows the held frets in parentheses
@@ -202,21 +208,22 @@ function renderTab(container, song, opts = {}) {
 
   // standard TAB bend marks: a curved arrow up from the fret to "full" / "1/2" above the staff;
   // a release starts bent, so it gets a straight arrow up to "full" / "1/2" and a curved arrow back down
-  function drawBend(g, st, cx, i) {
-    const y = TAB.top + (st.notes[0][0] - 1) * TAB.row, ax = cx + 20, tip = 16;
+  function drawBend(g, st, note, cx, i) {
+    const [s, f, t] = note, amount = t[1] === "1" ? 1 : t[1] ? +t[1] : 0;
+    const y = TAB.top + (s - 1) * TAB.row, ax = cx + 20, tip = 16;
     const head = (x, yy, up) => mk("path", { d: up ? `M${x} ${yy} l-3.5 7 h7 z` : `M${x} ${yy} l-3.5 -7 h7 z`, class: "tab-arrowhead" }, g);
     const label = (x, amount) => { const t = mk("text", { x, y: tip - 4, class: "tab-bendlabel" }, g); t.textContent = amount === 1 ? "1/2" : "full"; };
-    if (st.tech === "b") {
+    if (t[0] === "b") {
       mk("path", { d: `M${cx + 9} ${y - 1} Q${ax} ${y - 1} ${ax} ${tip + 6}`, class: "tab-arrow" }, g);
       head(ax, tip, true);
-      label(ax, st.bend);
+      label(ax, amount || 2);
     } else {
       // the bend amount comes from the bend this releases (same string and fret), else a whole step
-      const [s, f] = st.notes[0];
-      const from = song.steps.slice(0, i).reverse().find(x => x.tech === "b" && x.notes[0][0] === s && x.notes[0][1] === f);
+      const bendOf = x => x.notes.find(m => m[0] === s && m[1] === f && m[2] && m[2][0] === "b");
+      const from = song.steps.slice(0, i).reverse().map(bendOf).find(Boolean);
       mk("line", { x1: cx, x2: cx, y1: y - 10, y2: tip + 6, class: "tab-arrow" }, g);
       head(cx, tip, true);
-      label(cx, st.bend || (from ? from.bend : 2));
+      label(cx, amount || (from ? (from[2][1] === "1" ? 1 : 2) : 2));
       mk("path", { d: `M${cx + 3} ${tip + 2} Q${ax} ${tip + 2} ${ax} ${y - 15}`, class: "tab-arrow" }, g);
       head(ax, y - 9, false);
     }
@@ -369,9 +376,9 @@ function renderTab(container, song, opts = {}) {
   };
 }
 
-const stepLabel = st => st.brush ? "ブラッシング" : (st.chord || (st.tech === "b" ? `${noteName(OPEN_MIDI[st.notes[0][0]] + (st.capo || 0) + st.notes[0][1])}→${noteName(stepMidis(st)[0])}`
-  : st.notes.length ? stepMidis(st).map(noteName).join("+") : "休符")) + (st.pm ? "（P.M.）" : "");
-const stepWhere = st => st.chord ? "" : st.notes.map(([s, f]) => `${s}弦${f}フレット`).join("・")
-  + (st.tech ? { h: "（ハンマリング）", p: "（プリング）", s: "（スライド）", d: "（チョーキングを戻す）",
-    b: `（${st.bend === 1 ? "半音" : "1音"}チョーキング → ${noteName(stepMidis(st)[0])}）`, v: "（ビブラート）" }[st.tech] : "")
-  + (st.harm ? "（ハーモニクス）" : "");
+const TECH_NAMES = { h: "ハンマリング", p: "プリング", s: "スライド", si: "スライドイン", so: "スライドアウト", v: "ビブラート",
+  b: "1音チョーキング", b2: "1音チョーキング", b1: "半音チョーキング", d: "チョーキングを戻す", d1: "チョーキングを戻す", d2: "チョーキングを戻す" };
+const stepLabel = st => st.brush ? "ブラッシング" : (st.chord || (st.notes.length ? stepMidis(st).map(noteName).join("+") : "休符"))
+  + (st.pm ? "（P.M.）" : "");
+const stepWhere = st => st.chord ? "" : [...st.notes.map(([s, f, t]) => `${s}弦${f}フレット${t ? `（${TECH_NAMES[t]}）` : ""}`),
+  ...(st.mute || []).map(s => `${s}弦ミュート`)].join("・") + (st.harm ? "（ハーモニクス）" : "");

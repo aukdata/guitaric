@@ -22,70 +22,91 @@ function scheduleSong(song, from, rate, out, onStep) {
     let ring = k >= order.length ? held + 1.6 : held + 0.05;
     if (st.pm) ring = Math.min(ring, 0.22); // bridge mute: stopped short by the palm
     if (st.harm) ring = Math.max(ring, Math.min(held + 1.2, 2.5)); // a harmonic keeps ringing
-    const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + (st.tech === "s" ? 0.3 : 0.05), i + 1);
-    const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
-    const src = ctx.createBufferSource(); src.buffer = b;
-    // a slide glides from the previous note on the same string up or down into this one
-    const prev = steps[order[p - 1]];
-    // (notes played together slide by the same amount: the first one's)
-    const from = st.tech === "s" && prev && prev.notes.find(n => n[0] === st.notes[0][0]);
-    if (from && from[1] !== st.notes[0][1]) {
-      const glide = Math.min(0.15, dur * 0.5);
-      src.playbackRate.setValueAtTime(2 ** ((from[1] - st.notes[0][1]) / 12), start);
-      src.playbackRate.exponentialRampToValueAtTime(1, start + glide);
-    }
-    // bends glide up into the bent pitch; a release starts bent and comes down
-    if (st.tech === "b") {
-      src.playbackRate.setValueAtTime(2 ** (-st.bend / 12), start);
-      src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.2, dur * 0.6));
-    } else if (st.tech === "d") {
-      const up = 2 ** ((st.bend || 2) / 12);
-      src.playbackRate.setValueAtTime(up, start);
-      src.playbackRate.setValueAtTime(up, start + Math.min(0.08, dur * 0.3));
-      src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.25, dur * 0.8));
-    } else if (st.tech === "v") {
-      // vibrato: the pitch wavers about ±25 cents, 5.5 times a second, after the attack
-      const lfo = ctx.createOscillator(), depth = ctx.createGain();
-      lfo.frequency.value = 5.5;
-      depth.gain.setValueAtTime(0, start);
-      depth.gain.linearRampToValueAtTime(0.015, start + Math.min(0.25, dur * 0.4));
-      lfo.connect(depth); depth.connect(src.playbackRate);
-      lfo.start(start); lfo.stop(start + ring + 0.05);
-      sources.push(lfo);
-    }
-    const g = ctx.createGain();
-    const vol = st.tech === "h" || st.tech === "p" || st.tech === "s" ? 1.6 : 2.5; // not picked: softer
-    if (st.harm) {
-      // a harmonic: a pure, bell-like tone (the overtone alone, no low partials or pick noise)
-      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = midiToFreq(Math.max(...stepMidis(st))) * 1.6;
-      g.gain.setValueAtTime(vol * 1.3, start);
-      g.gain.exponentialRampToValueAtTime(vol * 0.3, start + ring - 0.04);
-      src.connect(lp); lp.connect(g);
-    } else if (st.pm) {
-      // the palm on the bridge dulls the sound and makes it die away fast
-      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900;
-      g.gain.setValueAtTime(vol * 1.4, start);
-      g.gain.exponentialRampToValueAtTime(vol * 0.15, start + ring - 0.04);
-      src.connect(lp); lp.connect(g);
-    } else {
-      g.gain.setValueAtTime(vol, start);
-      g.gain.setValueAtTime(vol, start + ring - 0.04);
-      src.connect(g);
-    }
-    g.gain.linearRampToValueAtTime(0, start + ring);
-    g.connect(out); src.start(start); src.stop(start + ring + 0.02);
-    sources.push(src);
+    // notes with different techniques sound apart (each string bends or slides on its own); muted
+    // strings add a dull click
+    const prev = steps[order[p - 1]], groups = new Map();
+    st.notes.forEach((n, j) => { const key = n[2] || ""; if (!groups.has(key)) groups.set(key, { notes: [], j }); groups.get(key).notes.push(n); });
+    for (const g of groups.values()) sources.push(...noteSound(setStepTech({ ...st, notes: g.notes }), start + g.j * 0.018, dur, ring, prev, out, i + 1));
+    if (st.mute) sources.push(brushSound(start, out, 0.8));
   }
   return { sources, timers, start, end: t };
 }
 
+// one group of notes of a step (same technique), from `start`; returns its audio sources
+function noteSound(st, start, dur, ring, prev, out, seed) {
+  const sources = [];
+  if (st.tech === "so") ring = Math.min(ring, dur + 0.05);
+  const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + (st.tech === "s" ? 0.3 : 0.05), seed);
+  const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
+  const src = ctx.createBufferSource(); src.buffer = b;
+  // a slide glides from the previous note on the same string up or down into this one
+  // (notes played together slide by the same amount: the first one's); a slide in comes up from
+  // a few frets below, a slide out falls away at the end
+  const from = st.tech === "s" && prev && prev.notes.find(n => n[0] === st.notes[0][0]);
+  if (from && from[1] !== st.notes[0][1]) {
+    const glide = Math.min(0.15, dur * 0.5);
+    src.playbackRate.setValueAtTime(2 ** ((from[1] - st.notes[0][1]) / 12), start);
+    src.playbackRate.exponentialRampToValueAtTime(1, start + glide);
+  }
+  if (st.tech === "si") {
+    src.playbackRate.setValueAtTime(2 ** (-4 / 12), start);
+    src.playbackRate.exponentialRampToValueAtTime(1, start + Math.min(0.12, dur * 0.5));
+  } else if (st.tech === "so") {
+    const fall = start + Math.max(dur * 0.5, dur - 0.15);
+    src.playbackRate.setValueAtTime(1, fall);
+    src.playbackRate.exponentialRampToValueAtTime(2 ** (-7 / 12), start + dur);
+  }
+  // bends glide up into the bent pitch; a release starts bent and comes down
+  if (st.tech === "b") {
+    src.playbackRate.setValueAtTime(2 ** (-st.bend / 12), start);
+    src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.2, dur * 0.6));
+  } else if (st.tech === "d") {
+    const up = 2 ** ((st.bend || 2) / 12);
+    src.playbackRate.setValueAtTime(up, start);
+    src.playbackRate.setValueAtTime(up, start + Math.min(0.08, dur * 0.3));
+    src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.25, dur * 0.8));
+  } else if (st.tech === "v") {
+    // vibrato: the pitch wavers about ±25 cents, 5.5 times a second, after the attack
+    const lfo = ctx.createOscillator(), depth = ctx.createGain();
+    lfo.frequency.value = 5.5;
+    depth.gain.setValueAtTime(0, start);
+    depth.gain.linearRampToValueAtTime(0.015, start + Math.min(0.25, dur * 0.4));
+    lfo.connect(depth); depth.connect(src.playbackRate);
+    lfo.start(start); lfo.stop(start + ring + 0.05);
+    sources.push(lfo);
+  }
+  const g = ctx.createGain();
+  const vol = st.tech === "h" || st.tech === "p" || st.tech === "s" ? 1.6 : 2.5; // not picked: softer
+  if (st.harm) {
+    // a harmonic: a pure, bell-like tone (the overtone alone, no low partials or pick noise)
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = midiToFreq(Math.max(...stepMidis(st))) * 1.6;
+    g.gain.setValueAtTime(vol * 1.3, start);
+    g.gain.exponentialRampToValueAtTime(vol * 0.3, start + ring - 0.04);
+    src.connect(lp); lp.connect(g);
+  } else if (st.pm) {
+    // the palm on the bridge dulls the sound and makes it die away fast
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900;
+    g.gain.setValueAtTime(vol * 1.4, start);
+    g.gain.exponentialRampToValueAtTime(vol * 0.15, start + ring - 0.04);
+    src.connect(lp); lp.connect(g);
+  } else {
+    g.gain.setValueAtTime(vol, start);
+    g.gain.setValueAtTime(vol, start + ring - 0.04);
+    src.connect(g);
+  }
+  g.gain.linearRampToValueAtTime(0, start + ring);
+  g.connect(out); src.start(start); src.stop(start + ring + 0.02);
+  sources.push(src);
+  return sources;
+}
+
 // brushing: the muted strings struck, a short dull noise with no pitch
-function brushSound(t, out) {
+function brushSound(t, out, vol = 1.8) {
   const n = Math.round(ctx.sampleRate * 0.09), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
   for (let k = 0; k < n; k++) d[k] = (Math.random() * 2 - 1) * Math.exp(-k / (ctx.sampleRate * 0.018));
   const src = ctx.createBufferSource(); src.buffer = b;
   const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1400; bp.Q.value = 0.8;
-  const g = ctx.createGain(); g.gain.value = 1.8;
+  const g = ctx.createGain(); g.gain.value = vol;
   src.connect(bp); bp.connect(g); g.connect(out); src.start(t);
   return src;
 }

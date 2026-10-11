@@ -133,13 +133,18 @@
             <button type="button" role="radio" class="icon" data-kind="note" title="音符" aria-label="音符"><i data-icon="music-3"></i></button><button type="button" role="radio" class="icon" data-kind="rest" title="休符（R）" aria-label="休符"><i data-icon="rest"></i></button>
           </div>
           <select id="popTech" aria-label="奏法" title="奏法">
-            <option value="">通常</option><option value="h">H</option><option value="p">P</option><option value="s">sl.</option>
+            <option value="">通常</option><option value="h">H</option><option value="p">P</option><option value="s">sl.</option><option value="si">sl.イン</option><option value="so">sl.アウト</option>
             <option value="b2">↑full</option><option value="b1">↑1/2</option><option value="d2">full↓</option><option value="d1">1/2↓</option>
             <option value="v">~</option><option value="n">&lt;*&gt;</option><option value="pm">P.M.</option><option value="x">ブラッシング</option>
           </select>
-          <button id="popBar" type="button" class="icon" title="小節（テンポ・繰り返し）" aria-label="小節（テンポ・繰り返し）"><i data-icon="repeat"></i></button>
           <button id="popPlay" type="button" class="icon" title="この音を鳴らす" aria-label="この音を鳴らす"><i data-icon="play"></i></button>
           <button id="popClose" type="button" class="icon pop-close" title="閉じる（Esc）" aria-label="閉じる"><i data-icon="x"></i></button>
+        </div>
+        <div id="popLenRow" class="pop-row pop-len">
+          <div class="len-slider">
+            <input id="popLen" type="range" min="0" max="9" step="1" aria-label="音価">
+            <div class="len-ticks" aria-hidden="true"><span>32</span><span>16</span><span class="dotted">付</span><span>8</span><span class="dotted">付</span><span>4</span><span class="dotted">付</span><span>2</span><span class="dotted">付</span><span>全</span></div>
+          </div>
         </div>
         <div id="popNote" class="pop-note">
           <div id="popFrets" class="pop-frets" aria-label="フレット"></div>
@@ -148,13 +153,6 @@
             <button id="popChordSet" type="button" title="コードを反映（C で入力欄へ）">反映</button>
             <label class="inline pop-loose" title="判定ゆるめ（L）"><input id="popLoose" type="checkbox">判定ゆるめ</label>
           </div>
-        </div>
-        <div id="popLenRow" class="pop-row pop-len">
-          <div class="len-slider">
-            <input id="popLen" type="range" min="0" max="9" step="1" aria-label="音価">
-            <div class="len-ticks" aria-hidden="true"><span>32</span><span>16</span><span class="dotted">付</span><span>8</span><span class="dotted">付</span><span>4</span><span class="dotted">付</span><span>2</span><span class="dotted">付</span><span>全</span></div>
-          </div>
-          <output id="popLenText"></output>
         </div>
         <div class="pop-row actions">
           <button id="popInsBefore" type="button" title="前に挿入（Shift+Enter）">← 前に挿入</button>
@@ -203,6 +201,7 @@
             <ul>
               <li><code>6-3</code> … 6弦3フレット（1＝細い弦 〜 6＝太い弦）</li>
               <li><code>6-3+5-2</code> … 同時に弾く音</li>
+              <li><code>5-3+4-x+3-0</code> … x はミュートした弦（音は出さない）</li>
               <li><code>r</code> … 休符</li>
               <li><code>~</code> … タイ（直前の音をのばす）</li>
               <li><code>x</code> … ブラッシング</li>
@@ -214,14 +213,16 @@
             </ul>
             <h3>奏法（音の後ろに付ける）</h3>
             <ul>
-              <li><code>4-7h</code> <code>4-5p</code> <code>5-5s</code> … ハンマリング・プリング・スライド</li>
+              <li><code>4-7h</code> <code>4-5p</code> … ハンマリング・プリング</li>
+              <li><code>5-5s</code> … スライド（前の音から）</li>
+              <li><code>5-7si</code> <code>5-7so</code> … スライドイン・スライドアウト</li>
               <li><code>3-7b</code> <code>3-7b1</code> … 1音・半音チョーキング</li>
               <li><code>3-7d</code> <code>3-7d1</code> <code>3-7d2</code> … チョーキングを戻す（半音・1音）</li>
               <li><code>3-7v</code> … ビブラート</li>
-              <li><code>5-5+3-7s</code> <code>4-0+3-2+2-3_</code> … 同時に弾く音には、記号を最後に1つだけ書けば全部の音にかかる（h p s v _ ?）。チョーキングは単音だけ</li>
-              <li><code>3-&lt;12&gt;</code> … ハーモニクス（3・4・5・7・9・12・16・19・24フレット）</li>
-              <li><code>6-0_</code> <code>E5_</code> … ブリッジミュート</li>
-              <li><code>C?</code> <code>6-3?</code> … 判定ゆるめ（弾けば何の音でも進む）。<code>_</code> の後ろに付ける</li>
+              <li><code>5-12s+3-14s</code> <code>4-7+3-7b</code> … 同時に弾く音は弦ごとに付ける</li>
+              <li><code>3-&lt;12&gt;</code> <code>4-&lt;12&gt;+3-&lt;12&gt;</code> … ハーモニクス（3・4・5・7・9・12・16・19・24フレット）。同時に弾く音は全部に付ける</li>
+              <li><code>6-0_</code> <code>E5_</code> <code>4-0+3-2_</code> … ブリッジミュート（最後に1つ）</li>
+              <li><code>C?</code> <code>6-3?</code> … 判定ゆるめ（弾けば何の音でも進む）。最後に1つ、<code>_</code> の後ろに付ける</li>
             </ul>
             <h3>テンポと繰り返し</h3>
             <ul>
@@ -256,12 +257,14 @@
           <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>前・次の音へ</td></tr>
           <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>上・下の弦へ</td></tr>
           <tr><td><kbd>H</kbd> <kbd>P</kbd> <kbd>S</kbd></td><td>ハンマリング・プリング・スライド（もう一度押すと解除）</td></tr>
+          <tr><td><kbd>I</kbd> <kbd>O</kbd></td><td>スライドイン・スライドアウト</td></tr>
           <tr><td><kbd>B</kbd> / <kbd>Shift</kbd>+<kbd>B</kbd></td><td>↑full / ↑1/2</td></tr>
           <tr><td><kbd>D</kbd> / <kbd>Shift</kbd>+<kbd>D</kbd></td><td>full↓ / 1/2↓</td></tr>
           <tr><td><kbd>R</kbd></td><td>休符にする</td></tr>
           <tr><td><kbd>L</kbd></td><td>判定ゆるめの切り替え</td></tr>
           <tr><td><kbd>M</kbd></td><td>ブリッジミュートの切り替え</td></tr>
           <tr><td><kbd>X</kbd></td><td>ブラッシングの切り替え</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>X</kbd></td><td>選択中の弦をミュート（x）</td></tr>
           <tr><td><kbd>V</kbd></td><td>ビブラートの切り替え</td></tr>
           <tr><td><kbd>N</kbd></td><td>ハーモニクスの切り替え</td></tr>
           <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>長さを短く・長く</td></tr>

@@ -180,7 +180,7 @@ function judgeStep(st, res, tr, repeat, ringing) {
 // short bend is the usual miss) to 50 above. The fretted pitch and the pitches on the way up are the
 // same string bending, not wrong notes. Vibrato (aim 0) wavers around the fretted pitch the same way.
 function judgeBend(st, res, top, ringing) {
-  const from = OPEN_MIDI[st.notes[0][0]] + (st.capo || 0) + st.notes[0][1], aim = st.tech === "b" ? st.bend * 100 : 0;
+  const [bs, bf] = techNote(st), from = OPEN_MIDI[bs] + (st.capo || 0) + bf, aim = st.tech === "b" ? st.bend * 100 : 0;
   const cents = n => 1200 * Math.log2(n.freq / midiToFreq(from));
   const loud = res.notes.filter(n => n.salience >= top * 0.6);
   const hit = loud.some(n => cents(n) >= aim - 60 && cents(n) <= aim + 50);

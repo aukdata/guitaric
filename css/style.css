@@ -375,7 +375,6 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .len-ticks span:nth-child(8) { left: 77.778%; }
 .len-ticks span:nth-child(9) { left: 88.889%; }
 .len-ticks span:nth-child(10) { left: 100.000%; }
-#popLenText { min-width: 4.6em; text-align: right; font-size: .82rem; }
 .pop-row.actions { border-top: 1px solid var(--line); padding-top: 8px; }
 .pop-row.actions button { padding: 5px 10px; font-size: .85rem; }
 .pop-row.actions .danger { margin-left: auto; color: var(--bad); }
