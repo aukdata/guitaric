@@ -646,6 +646,8 @@ function edApplyText() {
   const text = $("edTextArea").value.trim();
   const song = buildSong({ text, grid: ed.grid });
   if (song.errors.length) { $("edTextErr").textContent = song.errors.join(" / "); return; }
+  // fewer notes than now: something written would be lost
+  if (song.steps.length < ed.song.steps.length && !confirm(`今の${ed.song.steps.length}音が${song.steps.length}音になります。\n反映しますか？`)) return;
   edSetText(text, { i: 0, s: ed.sel ? ed.sel.s : 1 });
   $("edTextDlg").close();
 }
