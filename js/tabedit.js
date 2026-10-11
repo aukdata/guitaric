@@ -2,16 +2,18 @@
 // The song text stays the source of truth: each edit changes the parsed steps and writes them back
 // as text (stepsToText), and the TAB is drawn again from that text.
 
+// marks for the whole note ("_.'?")
+const stepFlags = st => (st.pm ? "_" : "") + (st.stac ? "." : "") + (st.grace ? "'" : "") + (st.loose ? "?" : "");
 // one step as a text token ("6-3h?:2", "C", "r:2", "~:8")
 function stepToken(st, withLen) {
-  const len = withLen && st.len !== 1 ? ":" + st.len : "";
+  const len = withLen && st.len !== 1 && !st.grace ? ":" + st.len : "";
   if (st.tie) return "~" + len;
-  if (st.brush) return "x" + len;
+  if (st.brush) return "x" + (st.loose ? "?" : "") + len;
   if (!st.notes.length) return "r" + len;
-  const q = (st.pm ? "_" : "") + (st.loose ? "?" : "");
+  const q = stepFlags(st);
   if (st.chord) return st.chord + q + len;
-  // each string with its own technique, muted strings as "x", from the 6th string down
-  const parts = st.notes.map(([s, f, t]) => [s, (st.harm ? `<${f}>` : f) + (t || "")]).concat((st.mute || []).map(s => [s, "x"]));
+  // each string with its own marks, muted strings as "x", from the 6th string down
+  const parts = st.notes.map(([s, f, m]) => [s, (m && m.harm ? `<${f}>` : f) + marksText(m)]).concat((st.mute || []).map(s => [s, "x"]));
   return parts.sort((a, b) => b[0] - a[0]).map(([s, f]) => `${s}-${f}`).join("+") + q + len;
 }
 
@@ -25,8 +27,8 @@ function marked(st, last, tok, volta, noBpm) {
 const MARKS = ["bpm", "repStart", "repEnd", "volta", "comments"];
 const withMarks = (from, st) => { for (const k of MARKS) if (from[k]) st[k] = from[k]; return st; };
 
-const noteSig = st => JSON.stringify([st.notes, st.mute || [], st.chord || "", st.len, !!st.loose, !!st.tie,
-  !!st.pm, !!st.brush, !!st.harm, st.volta || 0]);
+const noteSig = st => JSON.stringify([st.notes.map(n => [n[0], n[1], marksText(n[2]) + (markOf(n).harm ? "<>" : "")]), st.mute || [],
+  st.chord || "", st.len, !!st.loose, !!st.tie, !!st.pm, !!st.stac, !!st.grace, !!st.brush, st.volta || 0]);
 const stepSig = st => noteSig(st) + JSON.stringify([st.bpm || 0, !!st.repStart, st.repEnd || 0]);
 
 // Writes the steps as bar-separated text, keeping it short where the parser gives the same steps back
@@ -55,13 +57,13 @@ function stepsToText(steps, grid, timeSig, prefix, tail) {
     // (marks can open a run, and a repeat end close it)
     for (const st of bar) {
       const r = runs[runs.length - 1];
-      if (r && !st.bpm && !st.repStart && !st.comments && !opensVolta.has(st) && !r.last.repEnd && st.chord && r.st.chord === st.chord && noteSig(r.st) === noteSig(st)) { r.n++; r.last = st; }
+      if (r && !st.bpm && !st.grace && !st.repStart && !st.comments && !opensVolta.has(st) && !r.last.repEnd && st.chord && r.st.chord === st.chord && noteSig(r.st) === noteSig(st)) { r.n++; r.last = st; }
       else runs.push({ st, last: st, n: 1 });
     }
     const tok = (r, open) => {
       let t;
       if (!r.st.chord || r.n === 1) t = open && r.st.chord ? stepToken(r.st, false) : stepToken(r.st, true);
-      else t = `${r.st.chord}*${r.n}${(r.st.pm ? "_" : "") + (r.st.loose ? "?" : "")}` + (open ? "" : ":" + r.st.len * r.n);
+      else t = `${r.st.chord}*${r.n}${stepFlags(r.st)}` + (open ? "" : ":" + r.st.len * r.n);
       // (a comment inside the bar breaks the line there; one on the bar's first note goes before the bar)
       return (r.st !== bar[0] && r.st.comments ? "\n" + lines(r.st) : "") + marked(r.st, r.last, t, voltaTok.get(r.st) || "", r.st === steps[0]);
     };
@@ -97,7 +99,7 @@ const ed = {
 
 const edSnapshot = () => JSON.stringify([$("edTitle").value.trim(), ed.text]);
 const edDirty = () => ed.loaded && edSnapshot() !== ed.saved;
-const cloneStep = st => ({ ...st, notes: st.notes.map(n => n.slice()), ...(st.mute ? { mute: st.mute.slice() } : {}) });
+const cloneStep = st => ({ ...st, notes: st.notes.map(n => (n[2] ? [n[0], n[1], { ...n[2] }] : n.slice())), ...(st.mute ? { mute: st.mute.slice() } : {}) });
 
 function edSaveDraft() {
   try {
@@ -206,9 +208,9 @@ function lenPos(len, grid) {
 }
 // a bend release's amount: its own, else the bend it lets down (same string and fret), else full
 function releaseBend(i, n) {
-  if (n[2][1]) return +n[2][1];
+  if (n[2].move[1]) return +n[2].move[1];
   for (let k = i - 1; k >= 0; k--) {
-    const m = ed.song.steps[k].notes.find(x => x[0] === n[0] && x[1] === n[1] && x[2] && x[2][0] === "b");
+    const m = ed.song.steps[k].notes.find(x => x[0] === n[0] && x[1] === n[1] && bendOf(x[2]));
     if (m) return bendOf(m[2]);
   }
   return 2;
@@ -219,11 +221,10 @@ function edShowPop() {
   const g = ed.sel && $("edTab").querySelector(`.tab-step[data-i="${ed.sel.i}"]`);
   if (!ed.popOpen || !g || ed.play || ed.song.errors.length) { pop.hidden = true; return; }
   const i = ed.sel.i, st = ed.song.steps[i], s = ed.sel.s;
-  // tabs: note (a brushing stroke is a note with every string muted) / rest
-  const kind = isPlayed(st) || st.tie ? "note" : "rest";
+  // tabs: note / rest / brushing
+  const kind = st.brush ? "brush" : st.notes.length || st.tie ? "note" : "rest";
   $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.kind === kind)));
-  $("popNote").hidden = kind !== "note";
-  $("popTech").hidden = kind !== "note";
+  $("popNote").hidden = kind === "rest";
   $("popPlay").disabled = !isPlayed(st);
   $("popFrets").querySelectorAll(".fret-row").forEach(row => {
     // -2: not played, -1: muted (x), 0..: the fret
@@ -236,15 +237,25 @@ function edShowPop() {
     row.classList.toggle("on", f >= 0);
   });
   if (document.activeElement !== $("popChord")) $("popChord").value = st.chord || "";
-  $("popLoose").checked = !!st.loose;
-  $("popLoose").disabled = !st.notes.length;
-  // techniques: on the selected string's note; harmonics on every note; P.M. and brushing on anything
-  const onString = !st.chord && st.notes.some(n => n[0] === s), notes = !st.chord && st.notes.length > 0;
-  $("popTech").disabled = !!st.tie;
-  $("popTech").querySelectorAll("option").forEach(o => {
-    o.disabled = !(o.value === "" || o.value === "pm" || o.value === "x" || (o.value === "n" ? notes : onString));
-  });
-  $("popTech").value = techValue(st, i, s);
+  // the selected string's marks (only on a note written string by string)
+  const n = !st.chord && st.notes.find(x => x[0] === s), m = n ? markOf(n) : {};
+  for (const id of ["popStart", "popMove", "popVib", "popFast", "popHarm", "popTrill"]) $(id).disabled = !n;
+  $("popStart").value = m.start || "";
+  $("popMove").value = !m.move ? "" : m.move[0] === "d" ? "d" + releaseBend(i, n) : m.move;
+  $("popTrill").hidden = m.move !== "t";
+  if (m.move === "t" && document.activeElement !== $("popTrill")) $("popTrill").value = m.trill;
+  $("popVib").checked = !!m.v;
+  $("popFast").checked = !!m.fast;
+  $("popFast").disabled = !n || !(m.start === "s" || m.start === "i" || (m.move && "bdo".includes(m.move[0])));
+  $("popHarm").checked = !!m.harm;
+  $("popHarm").disabled = !n || !HARMONICS[n[1]];
+  // marks for the whole note
+  const sounding = st.notes.length > 0;
+  for (const [id, k] of [["popPm", "pm"], ["popStac", "stac"], ["popGrace", "grace"], ["popLoose", "loose"]]) {
+    $(id).checked = !!st[k];
+    $(id).disabled = k === "loose" ? !isPlayed(st) : !sounding;
+  }
+  $("popLen").disabled = !!st.grace;
   $("popLen").value = lenPos(st.len, ed.song.grid);
   pop.hidden = false;
   // just below the note, kept inside the editor's width
@@ -254,16 +265,6 @@ function edShowPop() {
   pop.style.top = (hl.bottom - body.top + 4) + "px";
   const r = pop.getBoundingClientRect();
   if (r.bottom > innerHeight && !pop.contains(document.activeElement)) window.scrollBy(0, Math.min(r.bottom - innerHeight + 8, r.top - 120));
-}
-
-// the 奏法 select's value for a step on string s (its note's own technique, else the step's)
-function techValue(st, i, s) {
-  if (st.brush) return "x";
-  const n = !st.chord && st.notes.find(x => x[0] === s);
-  if (n && n[2]) return n[2][0] === "d" ? "d" + releaseBend(i, n) : n[2] === "b" ? "b2" : n[2];
-  if (st.harm) return "n";
-  if (st.pm) return "pm";
-  return "";
 }
 
 function edSelect(i, s, open) {
@@ -322,7 +323,7 @@ function edUndo(redo) {
 }
 
 const asNotes = st => { delete st.chord; delete st.tie; delete st.brush; };
-// f: a fret, "x" (muted) or null (not played); a fret keeps the string's technique
+// f: a fret, "x" (muted) or null (not played); a fret keeps the string's marks
 function setFret(st, s, f) {
   const brush = st.brush;
   asNotes(st);
@@ -331,13 +332,16 @@ function setFret(st, s, f) {
   // a brushing stroke given a fret becomes that note alone
   const mute = brush ? [] : (st.mute || []).filter(m => m !== s);
   if (f === "x") mute.push(s);
-  else if (f != null) st.notes.push(old && old[2] ? [s, f, old[2]] : [s, f]);
+  else if (f != null) {
+    const m = old && old[2] ? { ...old[2] } : {};
+    if (m.harm && !HARMONICS[f]) delete m.harm; // no harmonic at that fret
+    if (m.move === "t" && m.trill === f) m.trill = f + 2 > 24 ? f - 2 : f + 2;
+    st.notes.push(Object.keys(m).length ? [s, f, m] : [s, f]);
+  }
   st.notes.sort((a, b) => b[0] - a[0]);
   if (mute.length) st.mute = mute.sort((a, b) => b - a); else delete st.mute;
-  if (st.harm && st.notes.some(n => !HARMONICS[n[1]])) delete st.harm; // no harmonic at that fret
-  setStepTech(st);
   // no string sounding: a brushing stroke
-  if (!st.notes.length) { delete st.loose; delete st.pm; delete st.mute; delete st.harm; st.brush = true; }
+  if (!st.notes.length) { delete st.pm; delete st.stac; delete st.grace; delete st.mute; st.brush = true; if (!st.len) st.len = 1; }
 }
 const restStep = len => ({ notes: [], len });
 
@@ -347,28 +351,48 @@ function edFret(f, string, merge) {
   edChange(steps => { setFret(steps[i], s, f); return { i, s }; }, { merge });
 }
 
-// 奏法 of the selected string's note: "h" "p" "s" (from the note before) "si" "so" (slide in / out) "b2"
-// "b1" "d2" "d1" "v" (vibrato); of the step: "n" (harmonics), "pm" (bridge mute), "x" (brushing: every
-// string muted); "" (none); the same one again turns it off
-function edTech(v, toggle) {
+// a mark on the selected string's note: key "start" ("h" "p" "s" "i"), "move" ("b" "b1" "d2" "d1" "o" "t"),
+// "v", "fast", "harm"; value "" / false takes it off; toggle: the same one again takes it off
+function edMark(key, value, toggle) {
   if (!ed.sel) return;
-  const i = ed.sel.i, s = ed.sel.s, st = ed.song.steps[i];
-  if (st.tie) return;
-  if (toggle && techValue(st, i, s) === v) v = "";
-  if (v === "x") { edBrush(false); return; }
-  if (st.brush && v !== "") { edStatus("先に音を選んでください"); return; }
-  const noteTech = v && v !== "pm" && v !== "n";
-  if (noteTech && (st.chord || !st.notes.some(n => n[0] === s))) { edStatus(`${s}弦に音を置いてから選んでください`); return; }
-  if (v === "n" && (st.chord || !st.notes.length)) { edStatus("ハーモニクスは単音か同時に弾く音に付けられます"); return; }
-  if (v === "n" && st.notes.some(n => !HARMONICS[n[1]])) { edStatus("ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです"); return; }
+  const { i, s } = ed.sel, st = ed.song.steps[i];
+  const n = !st.chord && st.notes.find(x => x[0] === s);
+  if (!n) { edStatus(`${s}弦に音を置いてから選んでください`); return; }
+  const m = markOf(n);
+  if (toggle && (m[key] === value || (key === "move" && value[0] === "d" && m.move && m.move[0] === "d"))) value = "";
+  if (key === "harm" && value && !HARMONICS[n[1]]) { edStatus("ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです"); return; }
+  edChange(steps => {
+    const t = steps[i].notes.find(x => x[0] === s), mm = { ...markOf(t) };
+    if (value) mm[key] = value; else delete mm[key];
+    if (key === "move") {
+      delete mm.trill;
+      if (value === "t") mm.trill = Math.max(0, Math.min(24, t[1] + 2 > 24 ? t[1] - 2 : t[1] + 2));
+      if (value === "d2") mm.move = "d2";
+    }
+    // "!" only for a slide or a bend
+    if (mm.fast && !(mm.start === "s" || mm.start === "i" || (mm.move && "bdo".includes(mm.move[0])))) delete mm.fast;
+    t.length = 2;
+    if (Object.keys(mm).length) t.push(mm);
+  });
+}
+function edTrill(f) {
+  if (!ed.sel || !(f >= 0 && f <= 24)) return;
+  const { i, s } = ed.sel;
+  const n = ed.song.steps[i].notes.find(x => x[0] === s);
+  if (!n || markOf(n).move !== "t" || f === n[1]) return;
+  edChange(steps => { steps[i].notes.find(x => x[0] === s)[2].trill = f; });
+}
+// a mark for the whole note: "pm" "stac" "grace" "loose"
+function edFlag(key, on) {
+  if (!ed.sel) return;
+  const { i } = ed.sel, st = ed.song.steps[i];
+  if (key === "loose" ? !isPlayed(st) : !st.notes.length) return;
+  if (on == null) on = !st[key];
   edChange(steps => {
     const t = steps[i];
-    if (t.brush) { steps[i] = withMarks(t, restStep(t.len)); return; } // ブラッシング → 通常: no strings left
-    // a note's technique, harmonics and P.M. go one at a time
-    delete t.harm; delete t.pm;
-    if (v === "n" || v === "pm") { t.notes.forEach(n => { n.length = 2; }); t[v === "n" ? "harm" : "pm"] = true; }
-    else { const n = t.notes.find(x => x[0] === s); n.length = 2; if (v) n.push(v); }
-    setStepTech(t);
+    if (on) t[key] = true; else delete t[key];
+    // a grace note has no length; taken off, it gets one cell
+    if (key === "grace") t.len = on ? 0 : t.len || 1;
   });
 }
 
@@ -380,7 +404,7 @@ function barsOf(song) {
   song.steps.forEach((st, i) => {
     bars[bars.length - 1].push(i);
     cells += st.len;
-    if (cells % barCells === 0 && i < song.steps.length - 1) bars.push([]);
+    if (st.len > 0 && cells % barCells === 0 && i < song.steps.length - 1) bars.push([]); // (a grace note never ends one)
   });
   return bars;
 }
@@ -479,7 +503,7 @@ function edBarRepeat(kind, n) {
 function edLen(len) {
   if (!ed.sel) return;
   const { i } = ed.sel;
-  edChange(steps => { steps[i].len = len; });
+  edChange(steps => { steps[i].len = len; delete steps[i].grace; });
 }
 // from the 音価 slider; a value finer than the grid makes the grid finer
 function edLenValue(k) {
@@ -489,19 +513,13 @@ function edLenValue(k) {
   while (!Number.isInteger(v * grid) && grid < 32) grid *= 2;
   if (!Number.isInteger(v * grid)) return;
   const { i } = ed.sel;
-  edChange(steps => { steps[i].len = v * grid; }, { grid, merge: "len" });
+  edChange(steps => { steps[i].len = v * grid; delete steps[i].grace; }, { grid, merge: "len" });
 }
 function edLenStep(dir) {
   if (!ed.sel) return;
   const st = ed.song.steps[ed.sel.i], list = lenChoices(ed.song.grid, st.len).map(([n]) => n);
   const k = list.indexOf(st.len) + dir;
   if (k >= 0 && k < list.length) edLen(list[k]);
-}
-
-function edLoose(on) {
-  if (!ed.sel || !ed.song.steps[ed.sel.i].notes.length) return;
-  const { i } = ed.sel;
-  edChange(steps => { if (on) steps[i].loose = true; else delete steps[i].loose; });
 }
 
 function edInsert(after, step) {
@@ -535,14 +553,14 @@ function edDelete() {
 function edRest() {
   if (!ed.sel) return;
   const { i } = ed.sel;
-  edChange(steps => { steps[i] = withMarks(steps[i], restStep(steps[i].len)); });
+  edChange(steps => { steps[i] = withMarks(steps[i], restStep(steps[i].len || 1)); });
 }
 
 // brushing (every string muted, "x"); toggle: again turns it back into a rest
 function edBrush(toggle) {
   if (!ed.sel) return;
   const { i } = ed.sel;
-  edChange(steps => { const len = steps[i].len; steps[i] = withMarks(steps[i], toggle && steps[i].brush ? restStep(len) : { notes: [], brush: true, len }); });
+  edChange(steps => { const len = steps[i].len || 1; steps[i] = withMarks(steps[i], toggle && steps[i].brush ? restStep(len) : { notes: [], brush: true, len }); });
 }
 
 
@@ -555,7 +573,12 @@ function edChord(name) {
   const notes = chordVoicing(name);
   if (!notes) { edStatus(`「${name}」はコード名として読めません`); return; }
   const { i } = ed.sel;
-  edChange(steps => { const st = steps[i]; steps[i] = withMarks(st, { notes, chord: name, len: st.len, ...(st.loose ? { loose: true } : {}), ...(st.pm ? { pm: true } : {}) }); });
+  edChange(steps => {
+    const st = steps[i], c = { notes, chord: name, len: st.len || 1 };
+    for (const k of ["loose", "pm", "stac", "grace"]) if (st[k]) c[k] = true;
+    if (c.grace) c.len = 0;
+    steps[i] = withMarks(st, c);
+  });
 }
 
 // a new bar of quarter rests at the end (a part-filled last bar is finished first)
@@ -697,12 +720,19 @@ $("popKind").addEventListener("click", e => {
   const st = ed.song.steps[ed.sel.i];
   // a rest made a note starts with every string muted (brushing) until frets are chosen
   if (b.dataset.kind === "rest" && (isPlayed(st) || st.tie)) edRest();
-  else if (b.dataset.kind === "note" && !isPlayed(st) && !st.tie) edBrush(false);
+  else if (b.dataset.kind === "brush" && !st.brush) edBrush(false);
+  else if (b.dataset.kind === "note" && !st.notes.length && !st.tie && !st.brush) edBrush(false);
   else edShowPop();
 });
-$("popTech").addEventListener("change", e => edTech(e.target.value, false));
+$("popStart").addEventListener("change", e => edMark("start", e.target.value));
+$("popMove").addEventListener("change", e => edMark("move", e.target.value));
+$("popTrill").addEventListener("change", e => edTrill(Math.round(+e.target.value)));
+$("popVib").addEventListener("change", e => edMark("v", e.target.checked));
+$("popFast").addEventListener("change", e => edMark("fast", e.target.checked));
+$("popHarm").addEventListener("change", e => edMark("harm", e.target.checked));
+for (const [id, k] of [["popPm", "pm"], ["popStac", "stac"], ["popGrace", "grace"]]) $(id).addEventListener("change", e => edFlag(k, e.target.checked));
 $("popLen").addEventListener("input", () => edLenValue(+$("popLen").value));
-$("popLoose").addEventListener("change", e => edLoose(e.target.checked));
+$("popLoose").addEventListener("change", e => edFlag("loose", e.target.checked));
 $("barBpmOn").addEventListener("change", e => edBarBpmOn(e.target.checked));
 $("barBpm").addEventListener("change", e => edBarBpm(Math.round(+e.target.value)));
 $("barBpm").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } });
@@ -841,18 +871,18 @@ document.addEventListener("keydown", e => {
   else if (k === "ArrowDown") { done(); edMove(0, 1); }
   else if (k === "Delete" || k === "Backspace") { done(); if (e.shiftKey) edDelete(); else edFret(null); }
   else if (k === "Enter") { done(); edInsert(!e.shiftKey); }
-  else if (key === "h" || key === "p" || key === "s") { done(); edTech(key, true); }
-  else if (key === "b") { done(); edTech(e.shiftKey ? "b1" : "b2", true); }
-  else if (key === "d") { done(); edTech(e.shiftKey ? "d1" : "d2", true); }
+  else if (key === "h" || key === "p" || key === "s" || key === "i") { done(); edMark("start", key, true); }
+  else if (key === "b") { done(); edMark("move", e.shiftKey ? "b1" : "b", true); }
+  else if (key === "d") { done(); edMark("move", e.shiftKey ? "d1" : "d2", true); }
+  else if (key === "o" || key === "t") { done(); edMark("move", key, true); }
+  else if (key === "v" || key === "f" || key === "n") { done(); const k2 = { v: "v", f: "fast", n: "harm" }[key], n = ed.song.steps[ed.sel.i].notes.find(x => x[0] === ed.sel.s); edMark(k2, !(n && markOf(n)[k2])); }
   else if (key === "r") { done(); edRest(); }
-  else if (key === "l") { done(); edLoose(!ed.song.steps[ed.sel.i].loose); }
+  else if (key === "l") { done(); edFlag("loose"); }
+  else if (key === "m") { done(); edFlag("pm"); }
+  else if (k === ".") { done(); edFlag("stac"); }
+  else if (k === "'") { done(); edFlag("grace"); }
   else if (key === "x" && e.shiftKey) { done(); const st = ed.song.steps[ed.sel.i]; edFret((st.mute || []).includes(ed.sel.s) ? null : "x"); }
   else if (key === "x") { done(); edBrush(true); }
-  else if (key === "i") { done(); edTech("si", true); }
-  else if (key === "o") { done(); edTech("so", true); }
-  else if (key === "v") { done(); edTech("v", true); }
-  else if (key === "n") { done(); edTech("n", true); }
-  else if (key === "m") { done(); edTech("pm", true); }
   else if (k === "[") { done(); edLenStep(-1); }
   else if (k === "]") { done(); edLenStep(1); }
   else if (key === "c") { done(); ed.popOpen = true; edShowPop(); $("popChord").focus(); $("popChord").select(); }

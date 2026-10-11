@@ -71,9 +71,11 @@ function showStep(i) {
 const practiceSrc = () => { const st = practice.song.steps[Math.min(practice.idx, practice.song.steps.length - 1)]; return st ? st.src : 0; };
 function markStep(k, state) { practice.marks[k] = state; showStep(practice.song.steps[k].src); }
 
+// steps wait mode stops at: played ones, but not grace notes (the next note is judged)
+const judged = st => isPlayed(st) && !st.grace;
 function playableIndex(i) {
   const steps = practice.song.steps;
-  while (i < steps.length && !isPlayed(steps[i])) i++; // wait mode skips rests
+  while (i < steps.length && !judged(steps[i])) i++; // wait mode skips rests
   return i;
 }
 
@@ -116,7 +118,7 @@ function setFeedback(msg, kind) {
 }
 
 function finishPractice() {
-  const steps = practice.song.steps, idxs = steps.map((s, i) => i).filter(i => isPlayed(steps[i]));
+  const steps = practice.song.steps, idxs = steps.map((s, i) => i).filter(i => judged(steps[i]));
   const first = idxs.filter(i => practice.firstTry[i]).length;
   const secs = practice.startedAt ? (performance.now() - practice.startedAt) / 1000 : 0;
   $("pWhere").textContent = "";
@@ -133,7 +135,7 @@ function finishPractice() {
 const isStrum = o => o.rise >= 8 || (o.rise >= 3 && o.strength >= 0.025) || (o.rise >= 2 && o.strength >= 0.06);
 
 // notes sounded by the fretting hand alone: no new pick attack to wait for
-const noAttack = st => !st.chord && ["h", "p", "s", "d"].includes(st.tech);
+const noAttack = st => !st.chord && st.notes.length > 0 && st.notes.every(unpicked);
 
 const soundKey = st => st.chord ? (chordPitchClasses(st.chord) || []).slice().sort().join() : stepMidis(st).sort().join();
 
@@ -164,7 +166,10 @@ function judgeStep(st, res, tr, repeat, ringing) {
   }
   const want = stepMidis(st), wantPcs = want.map(m => m % 12);
   const top = Math.max(0, ...res.notes.map(n => n.salience));
-  if (st.tech === "b" || st.tech === "v") return judgeBend(st, res, top, ringing);
+  // a trill's other note is not a wrong one
+  ringing = ringing.concat(st.notes.filter(n => markOf(n).move === "t").map(n => (OPEN_MIDI[n[0]] + (st.capo || 0) + n[2].trill) % 12));
+  const bn = bendNote(st);
+  if (bn) return judgeBend(st, bn, res, top, ringing);
   // strong notes of another pitch class that the previous step doesn't explain
   const extra = [...new Set(res.notes.filter(n => n.salience >= top * JUDGE.extraSal && !wantPcs.includes(n.midi % 12) && !ringing.includes(n.midi % 12)).map(n => noteName(n.midi)))];
   if (want.length === 1) {
@@ -179,8 +184,8 @@ function judgeStep(st, res, tr, repeat, ringing) {
 // A bend passes once the pitch has risen most of the way: within 60 cents below the target (a slightly
 // short bend is the usual miss) to 50 above. The fretted pitch and the pitches on the way up are the
 // same string bending, not wrong notes. Vibrato (aim 0) wavers around the fretted pitch the same way.
-function judgeBend(st, res, top, ringing) {
-  const [bs, bf] = techNote(st), from = OPEN_MIDI[bs] + (st.capo || 0) + bf, aim = st.tech === "b" ? st.bend * 100 : 0;
+function judgeBend(st, note, res, top, ringing) {
+  const from = OPEN_MIDI[note[0]] + (st.capo || 0) + note[1], aim = bendOf(note[2]) * 100;
   const cents = n => 1200 * Math.log2(n.freq / midiToFreq(from));
   const loud = res.notes.filter(n => n.salience >= top * 0.6);
   const hit = loud.some(n => cents(n) >= aim - 60 && cents(n) <= aim + 50);
@@ -209,7 +214,7 @@ function passStep() {
 
 function practiceTick(buf) {
   const cur = practice.song.steps[practice.idx];
-  const res = detectNotes(buf, ctx.sampleRate, { anyPitch: !!cur && (cur.tech === "b" || cur.tech === "v") });
+  const res = detectNotes(buf, ctx.sampleRate, { anyPitch: !!cur && !!bendNote(cur) });
   const db = 20 * Math.log10(res.rms + 1e-9);
   $("pMeter").style.width = Math.max(0, Math.min(100, (db + 70) / 60 * 100)) + "%";
   // strums found by the short-window onset detector since the last frame
@@ -235,7 +240,7 @@ function practiceTick(buf) {
   if (ctx.currentTime < practice.mutedUntil) return;
   if (practice.idx >= steps.length) return;
   // cued on a rest: wait there, and the first strum is judged against the next note
-  if (!isPlayed(steps[practice.idx])) {
+  if (!judged(steps[practice.idx])) {
     if (!strum) return;
     gotoStep(playableIndex(practice.idx));
     if (practice.idx >= steps.length) return;
@@ -386,7 +391,7 @@ $("pPrev").addEventListener("click", () => {
 });
 $("pNext").addEventListener("click", () => {
   if (practice.idx >= practice.song.steps.length) return;
-  if (isPlayed(practice.song.steps[practice.idx])) { practice.firstTry[practice.idx] = false; markStep(practice.idx, "skipped"); }
+  if (judged(practice.song.steps[practice.idx])) { practice.firstTry[practice.idx] = false; markStep(practice.idx, "skipped"); }
   gotoStep(practice.idx + 1);
 });
 $("pModel").addEventListener("click", playModel);

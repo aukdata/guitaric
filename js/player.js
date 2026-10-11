@@ -9,9 +9,12 @@ function scheduleSong(song, from, rate, out, onStep) {
   const steps = song.steps, order = song.order || steps.map((_, i) => i);
   const sources = [], timers = [];
   let t = ctx.currentTime + 0.15;
-  const start = t;
+  const t0 = t;
+  let lag = 0; // a grace note just before: the next note sounds a moment later
   for (let p = Math.max(0, order.indexOf(from)); p < order.length; p++) {
-    const i = order[p], st = steps[i], cell = cellSecs(song, st, rate), dur = st.len * cell, start = t;
+    const i = order[p], st = steps[i], cell = cellSecs(song, st, rate), dur = st.len * cell;
+    const start = t + lag;
+    lag = 0;
     timers.push(setTimeout(() => onStep(i), (start - ctx.currentTime) * 1000));
     t += dur;
     if (st.brush) { sources.push(brushSound(start, out)); continue; }
@@ -20,64 +23,71 @@ function scheduleSong(song, from, rate, out, onStep) {
     let held = dur, k = p + 1;
     while (k < order.length && steps[order[k]].tie) held += steps[order[k]].len * cellSecs(song, steps[order[k++]], rate);
     let ring = k >= order.length ? held + 1.6 : held + 0.05;
+    if (st.grace) { lag = Math.min(0.06, steps[order[p + 1]] ? steps[order[p + 1]].len * cellSecs(song, steps[order[p + 1]], rate) / 3 : 0.06); ring = lag + 0.03; }
+    if (st.stac) ring = Math.min(ring, Math.max(0.08, dur * 0.45)); // staccato: cut short, its length kept
     if (st.pm) ring = Math.min(ring, 0.22); // bridge mute: stopped short by the palm
-    if (st.harm) ring = Math.max(ring, Math.min(held + 1.2, 2.5)); // a harmonic keeps ringing
-    // notes with different techniques sound apart (each string bends or slides on its own); muted
+    // notes with different marks sound apart (each string bends or slides on its own); muted
     // strings add a dull click
     const prev = steps[order[p - 1]], groups = new Map();
-    st.notes.forEach((n, j) => { const key = n[2] || ""; if (!groups.has(key)) groups.set(key, { notes: [], j }); groups.get(key).notes.push(n); });
-    for (const g of groups.values()) sources.push(...noteSound(setStepTech({ ...st, notes: g.notes }), start + g.j * 0.018, dur, ring, prev, out, i + 1));
+    st.notes.forEach((n, j) => { const key = JSON.stringify(n[2] || {}); if (!groups.has(key)) groups.set(key, { notes: [], j }); groups.get(key).notes.push(n); });
+    for (const g of groups.values()) sources.push(...noteSound({ ...st, notes: g.notes }, markOf(g.notes[0]), start + g.j * 0.018, dur, ring, prev, out, i + 1));
     if (st.mute) sources.push(brushSound(start, out, 0.8));
   }
-  return { sources, timers, start, end: t };
+  return { sources, timers, start: t0, end: t };
 }
 
-// one group of notes of a step (same technique), from `start`; returns its audio sources
-function noteSound(st, start, dur, ring, prev, out, seed) {
+// one group of notes of a step (the same marks m), from `start`; returns its audio sources
+function noteSound(st, m, start, dur, ring, prev, out, seed) {
   const sources = [];
-  if (st.tech === "so") ring = Math.min(ring, dur + 0.05);
-  const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + (st.tech === "s" ? 0.3 : 0.05), seed);
+  const fast = m.fast ? 0.3 : 1;
+  if (m.harm && !st.pm && !st.stac) ring = Math.max(ring, Math.min(ring + 1.2, 2.5)); // a harmonic keeps ringing
+  if (m.move === "o") ring = Math.min(ring, dur + 0.05);
+  const data = synthStrum(stepMidis(st), ctx.sampleRate, ring + (m.start === "s" ? 0.3 : 0.05), seed);
   const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
   const src = ctx.createBufferSource(); src.buffer = b;
-  // a slide glides from the previous note on the same string up or down into this one
-  // (notes played together slide by the same amount: the first one's); a slide in comes up from
-  // a few frets below, a slide out falls away at the end
-  const from = st.tech === "s" && prev && prev.notes.find(n => n[0] === st.notes[0][0]);
+  const rate = src.playbackRate;
+  // how it starts: a slide glides from the previous note on the same string (notes played together
+  // slide by the same amount: the first one's); a slide in comes up from a few frets below
+  const from = m.start === "s" && prev && prev.notes.find(n => n[0] === st.notes[0][0]);
   if (from && from[1] !== st.notes[0][1]) {
-    const glide = Math.min(0.15, dur * 0.5);
-    src.playbackRate.setValueAtTime(2 ** ((from[1] - st.notes[0][1]) / 12), start);
-    src.playbackRate.exponentialRampToValueAtTime(1, start + glide);
+    rate.setValueAtTime(2 ** ((from[1] - st.notes[0][1]) / 12), start);
+    rate.exponentialRampToValueAtTime(1, start + Math.min(0.15 * fast, dur * 0.5 || 0.05));
+  } else if (m.start === "i") {
+    rate.setValueAtTime(2 ** (-4 / 12), start);
+    rate.exponentialRampToValueAtTime(1, start + Math.min(0.12 * fast, dur * 0.5 || 0.05));
   }
-  if (st.tech === "si") {
-    src.playbackRate.setValueAtTime(2 ** (-4 / 12), start);
-    src.playbackRate.exponentialRampToValueAtTime(1, start + Math.min(0.12, dur * 0.5));
-  } else if (st.tech === "so") {
-    const fall = start + Math.max(dur * 0.5, dur - 0.15);
-    src.playbackRate.setValueAtTime(1, fall);
-    src.playbackRate.exponentialRampToValueAtTime(2 ** (-7 / 12), start + dur);
+  // while it rings: bends glide up into the bent pitch; a release starts bent and comes down;
+  // a slide out falls away at the end; a trill alternates with the other fret about 12 times a second
+  const bend = bendOf(m);
+  if (bend) {
+    rate.setValueAtTime(2 ** (-bend / 12), start);
+    rate.linearRampToValueAtTime(1, start + Math.min(0.2 * fast, dur * 0.6));
+  } else if (m.move && m.move[0] === "d") {
+    const up = 2 ** ((+m.move[1] || 2) / 12);
+    rate.setValueAtTime(up, start);
+    rate.setValueAtTime(up, start + Math.min(0.08 * fast, dur * 0.3));
+    rate.linearRampToValueAtTime(1, start + Math.min(0.25 * fast, dur * 0.8));
+  } else if (m.move === "o") {
+    const fall = start + Math.max(dur * 0.5, dur - 0.15 * fast);
+    rate.setValueAtTime(1, fall);
+    rate.exponentialRampToValueAtTime(2 ** (-7 / 12), start + dur);
+  } else if (m.move === "t") {
+    const other = 2 ** ((m.trill - st.notes[0][1]) / 12);
+    for (let k = 1, x = start + 1 / 12; x < start + Math.min(ring, dur); k++, x += 1 / 12) rate.setValueAtTime(k % 2 ? other : 1, x);
   }
-  // bends glide up into the bent pitch; a release starts bent and comes down
-  if (st.tech === "b") {
-    src.playbackRate.setValueAtTime(2 ** (-st.bend / 12), start);
-    src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.2, dur * 0.6));
-  } else if (st.tech === "d") {
-    const up = 2 ** ((st.bend || 2) / 12);
-    src.playbackRate.setValueAtTime(up, start);
-    src.playbackRate.setValueAtTime(up, start + Math.min(0.08, dur * 0.3));
-    src.playbackRate.linearRampToValueAtTime(1, start + Math.min(0.25, dur * 0.8));
-  } else if (st.tech === "v") {
+  if (m.v) {
     // vibrato: the pitch wavers about ±25 cents, 5.5 times a second, after the attack
     const lfo = ctx.createOscillator(), depth = ctx.createGain();
     lfo.frequency.value = 5.5;
     depth.gain.setValueAtTime(0, start);
-    depth.gain.linearRampToValueAtTime(0.015, start + Math.min(0.25, dur * 0.4));
-    lfo.connect(depth); depth.connect(src.playbackRate);
+    depth.gain.linearRampToValueAtTime(0.015, start + Math.min(0.25, dur * 0.4 || 0.1));
+    lfo.connect(depth); depth.connect(rate);
     lfo.start(start); lfo.stop(start + ring + 0.05);
     sources.push(lfo);
   }
   const g = ctx.createGain();
-  const vol = st.tech === "h" || st.tech === "p" || st.tech === "s" ? 1.6 : 2.5; // not picked: softer
-  if (st.harm) {
+  const vol = (m.start && "hps".includes(m.start) ? 1.6 : 2.5) * (st.grace ? 0.8 : 1); // not picked: softer
+  if (m.harm) {
     // a harmonic: a pure, bell-like tone (the overtone alone, no low partials or pick noise)
     const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = midiToFreq(Math.max(...stepMidis(st))) * 1.6;
     g.gain.setValueAtTime(vol * 1.3, start);
@@ -91,7 +101,7 @@ function noteSound(st, start, dur, ring, prev, out, seed) {
     src.connect(lp); lp.connect(g);
   } else {
     g.gain.setValueAtTime(vol, start);
-    g.gain.setValueAtTime(vol, start + ring - 0.04);
+    g.gain.setValueAtTime(vol, start + Math.max(0, ring - 0.04));
     src.connect(g);
   }
   g.gain.linearRampToValueAtTime(0, start + ring);

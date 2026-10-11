@@ -3,24 +3,23 @@
 const OPEN_MIDI = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
 // natural harmonics: fret -> semitones above the open string (the overtone that fret's node gives)
 const HARMONICS = { 12: 12, 7: 19, 19: 19, 5: 24, 24: 24, 4: 28, 9: 28, 16: 28, 3: 31 };
+// Each note is [string, fret, marks?]. marks (only when there are any):
+//   start  how the note begins: "h" hammer-on, "p" pull-off, "s" slide from the note before, "i" slide in
+//   move   while it rings: "b" / "b1" bend (whole / half), "d" / "d1" / "d2" release, "o" slide out,
+//          "t" trill (trill: the other fret)
+//   v      vibrato;  fast  "!" (the slide or bend done quickly);  harm  natural harmonic ("<12>")
+const markOf = n => n[2] || {};
+const bendOf = m => (m && m.move && m.move[0] === "b" ? (m.move === "b1" ? 1 : 2) : 0);
 // sounding pitches: a bent note at the pitch it is bent up to; a harmonic at its overtone;
 // a capo raises every string (buildSong puts the song's capo on each step)
-// (each note may carry its own technique: [string, fret, "b1"])
-const bendOf = t => (t && t[0] === "b" ? (t[1] === "1" ? 1 : 2) : 0);
-const stepMidis = step => step.notes.map(([s, f, t]) => OPEN_MIDI[s] + (step.capo || 0) + (step.harm ? HARMONICS[f] || f : f) + bendOf(t));
-// the note carrying the step's technique (the first one with any), and the step-wide view of it:
-// st.tech "h" "p" "s" "si" "so" "v" "b" "d", st.bend 1 / 2 for a bend or a release
-const techNote = st => st.notes.find(n => n[2]) || st.notes[0];
-function setStepTech(st) {
-  delete st.tech; delete st.bend;
-  const n = st.notes.find(m => m[2]);
-  if (!n) return st;
-  const t = n[2];
-  st.tech = t === "si" || t === "so" ? t : t[0];
-  if (t[0] === "b") st.bend = bendOf(t);
-  else if (t[0] === "d" && t[1]) st.bend = +t[1];
-  return st;
-}
+const noteMidi = (n, capo) => OPEN_MIDI[n[0]] + (capo || 0) + (markOf(n).harm ? HARMONICS[n[1]] || n[1] : n[1]) + bendOf(n[2]);
+const stepMidis = step => step.notes.map(n => noteMidi(n, step.capo));
+// played by the fretting hand alone (no pick): hammer-on, pull-off, slide from the note before, a release
+const unpicked = n => { const m = markOf(n); return m.start ? "hps".includes(m.start) : !!m.move && m.move[0] === "d"; };
+// the note whose pitch bends or wavers (judged by its pitch moving), if any
+const bendNote = st => st.chord ? null : st.notes.find(n => bendOf(n[2]) || markOf(n).v) || null;
+// a note's marks written out ("hb1v!"), in a fixed order
+const marksText = m => !m ? "" : (m.start || "") + (m.move ? (m.move === "t" ? "t" + m.trill : m.move) : "") + (m.v ? "v" : "") + (m.fast ? "!" : "");
 // steps that are played (a brushing stroke has no pitch but is played)
 const isPlayed = st => st.notes.length > 0 || !!st.brush;
 
@@ -127,14 +126,22 @@ function chordPitchClasses(name) {
  *   6-3+5-2             notes played together
  *   r                   rest
  *   x                   brushing (a muted strum: no pitch)
+ *   marks for the whole note go after it, in any order:
  *   6-0_  E5_           "_" = bridge mute (P.M.)
+ *   6-3.                "." = staccato (its length kept, the sound cut short)
+ *   5-5' 5-7h           "'" = grace note (no length: a moment at the start of the next note)
  *   ~:8                 tie: the previous note keeps ringing (across a bar line too)
  *   C*4                 the chord strummed 4 times in its bar
  *   C?  6-3?            judged loosely: any strum / note passes
- *   4-7h  4-5p  5-5s    hammer-on / pull-off / slide into this note (shown on the TAB; the pitch is judged as usual)
- *   3-7b  3-7b1  3-7d   bend up a whole / half step (judged at the bent pitch) / release a pre-bent note (3-7d1 / 3-7d2: half / whole)
+ *   marks for one string go right after its fret, in any order, one from each group:
+ *   4-7h  4-5p  5-5s  5-7i   how it starts: hammer-on / pull-off / slide from the note before / slide in
+ *   3-7b  3-7b1  3-7d   while it rings: bend up a whole / half step (judged at the bent pitch) / release a
+ *                       pre-bent note (3-7d1 / 3-7d2: half / whole); 5-7o slide out; 3-5t7 trill with fret 7
  *   3-7v                vibrato
- *   3-<12>  4-<7>+3-<7> natural harmonics (frets 3 4 5 7 9 12 16 19 24)
+ *   3-7b!  5-7s!        "!": the slide or bend done quickly
+ *   (older text: 5-7si / 5-7so for slide in / out)
+ *   3-<12>  4-<7>+3-7   natural harmonics (frets 3 4 5 7 9 12 16 19 24)
+ *   5-3+4-x+3-0         "x": a muted string
  *   C/G                 slash chord (C over a G bass)
  *   @bpm120             tempo from the next note on (anywhere: a tempo change mid-song)
  *   @[ ... @]  @]3      repeat the part between (twice / 3 times); "@]" alone repeats from the top
@@ -148,8 +155,32 @@ function chordPitchClasses(name) {
  *   % ...               a comment to the end of the line (kept with the next note: st.comments, after the
  *                       last note: tail); older text: a line starting with "#"
  */
-// one string of notes played together: "5-7", "5-7s", "3-<12>", "4-x" (muted)
-const NOTE_RE = /^(\d)-(<\d+>|\d+|x)(si|so|s|h|p|v|b[12]?|d[12]?)?$/;
+// one string of notes played together: "5-7", "5-7s", "3-<12>", "4-x" (muted), then its marks in any order
+const NOTE_RE = /^(\d)-(<\d+>|\d+|x)([a-z0-9!]*)$/;
+const MARK_RE = /si|so|[hpsiov!]|b[12]?|d[12]?|t\d+/y;
+// a string's marks ("bv!") -> { marks } or { bad } (an error text)
+function parseMarks(text, fret) {
+  const m = {}, seen = {};
+  MARK_RE.lastIndex = 0;
+  while (MARK_RE.lastIndex < text.length) {
+    const at = MARK_RE.lastIndex, k = MARK_RE.exec(text);
+    if (!k) return { bad: `：「${text.slice(at)}」は読めません` };
+    let t = k[0];
+    if (t === "si") t = "i"; else if (t === "so") t = "o"; else if (t === "b2") t = "b";
+    const group = "hpsi".includes(t) ? "start" : t === "v" ? "v" : t === "!" ? "fast" : "move";
+    if (seen[group]) return { bad: `：「${seen[group]}」と「${k[0]}」は一緒に付けられません` };
+    seen[group] = k[0];
+    if (group === "start") m.start = t;
+    else if (group === "v") m.v = true;
+    else if (group === "fast") m.fast = true;
+    else if (t[0] === "t") {
+      m.move = "t"; m.trill = +t.slice(1);
+      if (m.trill === fret || m.trill > 24) return { bad: "：トリルの相手のフレットが読めません（例 3-5t7）" };
+    } else m.move = t;
+  }
+  if (m.fast && !(m.start === "s" || m.start === "i" || (m.move && "bdo".includes(m.move[0])))) return { bad: "：! はスライドかチョーキングに付けます" };
+  return { marks: m };
+}
 function parseSongText(text, opts = {}) {
   const grid = opts.grid || 8, beats = (opts.timeSig || [4, 4])[0];
   const barCells = beats * grid / 4;
@@ -183,44 +214,63 @@ function parseSongText(text, opts = {}) {
         } else errors.push(`「${tok}」は読めません（@bpm120 / @[ / @] / @]3 / @alt1 / @alt2）`);
         continue;
       }
-      // a trailing "?" marks a step judged loosely (any strum or note passes)
-      const loose = /\?(:|$)/.test(tok.replace("_", ""));
-      const pm = /_(\?)?(:|$)/.test(tok);
-      let [body, lenStr] = tok.replace("?", "").replace(/_(?=\??(:|$))/, "").split(":");
-      const len = lenStr ? parseInt(lenStr, 10) : null;
+      // marks for the whole note, after it in any order: "_" bridge mute, "." staccato, "'" grace note,
+      // "?" judged loosely, ":n" length in cells
+      const cut = tok.search(/[_.?'’‘:]/);
+      let body = cut < 0 ? tok : tok.slice(0, cut);
+      const suffix = cut < 0 ? "" : tok.slice(cut);
+      const sm = suffix.match(/[_.?'’‘]|:\d+|\*\d+/g) || [];
+      const whole = sm.join("") === suffix;
+      // (a chord's "*4" may come among them too: "E5_*4")
+      const strums = sm.find(x => x[0] === "*");
+      if (strums && !body.includes("*")) { body += strums; sm.splice(sm.indexOf(strums), 1); }
+      if (!whole || !body || sm.some(x => x[0] === "*")) { errors.push(`「${tok}」：_ . ' ? :長さ は音符の最後に書きます（例 4-0+3-2_.、6-3?:2）`); continue; }
+      const flags = sm.map(x => (x[0] === ":" ? ":" : "‘’".includes(x) ? "'" : x));
+      if (new Set(flags).size !== flags.length) { errors.push(`「${tok}」：同じ記号が2回あります`); continue; }
+      const lenStr = sm.find(x => x[0] === ":");
+      const len = lenStr ? parseInt(lenStr.slice(1), 10) : null;
       if (lenStr && !(len > 0)) { errors.push(`「${tok}」の長さが読めません`); continue; }
+      const loose = flags.includes("?"), pm = flags.includes("_"), stac = flags.includes("."), grace = flags.includes("'");
+      const rest = /^[rR~]$/.test(body), brush = /^[xX]$/.test(body);
+      if (rest && (loose || pm || stac || grace)) { errors.push(`「${tok}」：休符・タイには _ . ' ? を付けられません`); continue; }
+      if (brush && (pm || stac || grace)) { errors.push(`「${tok}」：ブラッシングに付けられるのは ? だけです`); continue; }
+      if (grace && lenStr) { errors.push(`「${tok}」：装飾音（'）は長さを持ちません`); continue; }
       if (/^[rR]$/.test(body)) { push({ notes: [], len: len || 1 }); continue; }
-      if (/^[xX]$/.test(body)) { push({ notes: [], brush: true, len: len || 1 }); continue; }
+      if (brush) { push({ notes: [], brush: true, len: len || 1, ...(loose ? { loose: true } : {}) }); continue; }
       // "~" holds the previous note on (a tie): nothing new to play, so wait mode skips it like a rest
       if (body === "~") { push({ notes: [], tie: true, len: len || 1 }); continue; }
-      if (/_\+\d/.test(tok)) { errors.push(`「${tok}」：_ は最後に1つだけ書きます（例 4-0+3-2+2-3_）`); continue; }
-      const extra = { ...(loose ? { loose: true } : {}), ...(pm ? { pm: true } : {}) };
-      // notes played together, each with its own technique ("5-12s+3-14s"); "x" = a muted string
-      // (touched, not sounding); "3-<12>" = natural harmonics (every note of the step)
+      // a grace note takes no time: it sounds for a moment at the start of the next note
+      const extra = { ...(loose ? { loose: true } : {}), ...(pm ? { pm: true } : {}), ...(stac ? { stac: true } : {}), ...(grace ? { grace: true } : {}) };
+      // notes played together, each string with its own marks ("5-12s+3-14s", "3-7bv"); "x" = a muted
+      // string (touched, not sounding); "3-<12>" = a natural harmonic
       const parts = body.split("+").map(p => NOTE_RE.exec(p));
       if (parts.every(Boolean)) {
         const notes = [], mute = [];
-        let harm = 0, bad = "";
+        let bad = "";
         for (const [, sStr, f, t] of parts) {
-          const s = +sStr;
-          if (s < 1 || s > 6 || f !== "x" && +f.replace(/[<>]/g, "") > 24) bad = "は弦1〜6・フレット0〜24で書いてください";
+          const s = +sStr, fret = f === "x" ? 0 : +f.replace(/[<>]/g, "");
+          if (s < 1 || s > 6 || fret > 24) bad = "は弦1〜6・フレット0〜24で書いてください";
           else if (notes.some(n => n[0] === s) || mute.includes(s)) bad = "：同じ弦が2回あります";
-          else if (f === "x") { if (t) bad = "：ミュート（x）には奏法を付けられません"; else mute.push(s); }
+          else if (f === "x") { if (t) bad = "：ミュート（x）には記号を付けられません"; else mute.push(s); }
+          else if (f[0] === "<" && !HARMONICS[fret]) bad = "：ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです";
           else {
-            if (f[0] === "<") harm++;
-            const n = [s, +f.replace(/[<>]/g, "")];
-            if (t) n.push(t);
-            notes.push(n);
+            const r = parseMarks(t, fret);
+            if (r.bad) bad = r.bad;
+            else {
+              if (f[0] === "<") r.marks.harm = true;
+              notes.push(Object.keys(r.marks).length ? [s, fret, r.marks] : [s, fret]);
+            }
           }
+          if (bad) break;
         }
-        if (!bad && harm && harm !== notes.length) bad = "：ハーモニクスは同時に弾く全部の音に付けてください";
-        if (!bad && harm && notes.some(([, f]) => !HARMONICS[f])) bad = "：ハーモニクスは 3・4・5・7・9・12・16・19・24 フレットです";
         if (bad) { errors.push(`「${tok}」${bad}`); continue; }
-        if (!notes.length) { push({ notes: [], brush: true, len: len || 1, ...(loose ? { loose: true } : {}) }); continue; }
-        const st = { notes: notes.sort((a, b) => b[0] - a[0]), len: len || 1, ...extra };
-        if (harm) st.harm = true;
+        if (!notes.length) {
+          if (pm || stac || grace) { errors.push(`「${tok}」：ブラッシングに付けられるのは ? だけです`); continue; }
+          push({ notes: [], brush: true, len: len || 1, ...(loose ? { loose: true } : {}) }); continue;
+        }
+        const st = { notes: notes.sort((a, b) => b[0] - a[0]), len: grace ? 0 : len || 1, ...extra };
         if (mute.length) st.mute = mute.sort((a, b) => b - a);
-        push(setStepTech(st));
+        push(st);
         continue;
       }
       // "C*4": the chord strummed 4 times, splitting its length
@@ -229,7 +279,8 @@ function parseSongText(text, opts = {}) {
       if (!(times >= 1 && times <= 16)) { errors.push(`「${tok}」の回数が読めません`); continue; }
       const notes = chordVoicing(name);
       if (!notes) { errors.push(`「${tok}」はコード名としても音（弦-フレット）としても読めません`); continue; }
-      for (let k = 0; k < times; k++) push({ notes, chord: name, len: len ? Math.max(1, Math.round(len / times)) : null, split: times, ...extra });
+      if (grace && times > 1) { errors.push(`「${tok}」：装飾音（'）は1回だけです`); continue; }
+      for (let k = 0; k < times; k++) push({ notes, chord: name, len: grace ? 0 : len ? Math.max(1, Math.round(len / times)) : null, split: times, ...extra });
     }
     if (barOnly) { volta = 0; barOnly = false; }
     // chords without an explicit length fill the bar (or a whole bar each when no bars are written)

@@ -23,7 +23,7 @@ function renderTab(container, song, opts = {}) {
   song.steps.forEach((st, i) => {
     bars[bars.length - 1].push(i); barOf[i] = bars.length - 1;
     cells += st.len;
-    endsBar[i] = cells % barCells === 0;
+    endsBar[i] = st.len > 0 && cells % barCells === 0; // (a grace note never ends a bar)
     if (endsBar[i] && i < song.steps.length - 1) bars.push([]);
   });
   // start of each step in cells, for beaming within a beat
@@ -141,33 +141,41 @@ function renderTab(container, song, opts = {}) {
       // previous note, slide in from below, slide out downward) or a bend arrow at each string's note
       const labels = [];
       for (const n of st.notes) {
-        const [s, f, t] = n;
-        if (!t) continue;
+        const [s, f] = n, m = markOf(n);
         const y = TAB.top + (s - 1) * TAB.row;
-        const prev = song.steps[i - 1], pn = prev && !prev.chord && heldNotes(i - 1).find(m => m[0] === s);
-        const label = { h: "H", p: "P", s: "sl." }[t];
+        const prev = song.steps[i - 1], pn = prev && !prev.chord && heldNotes(i - 1).find(x => x[0] === s);
+        const label = { h: "H", p: "P", s: "sl." }[m.start];
         if (label && !labels.includes(label)) labels.push(label);
-        if ((t === "h" || t === "p") && pn && at[i - 1].row === at[i].row) {
+        // how it starts
+        if ((m.start === "h" || m.start === "p") && pn && at[i - 1].row === at[i].row) {
           const px = at[i - 1].x + Math.min(at[i - 1].w, TAB.minStep) / 2;
           mk("path", { d: `M${px + 4} ${y - 9} Q${(px + cx) / 2} ${y - 20} ${cx - 4} ${y - 9}`, class: "tab-slur" }, g);
-        } else if (t === "s" && pn && at[i - 1].row === at[i].row) {
+        } else if (m.start === "s" && pn && at[i - 1].row === at[i].row) {
           // a slide: a slant line from the previous note's number to this one's
           const px = at[i - 1].x + Math.min(at[i - 1].w, TAB.minStep) / 2, up = pn[1] < f;
           const x0 = px + 6 + (String(pn[1]).length - 1) * 4 + (prev.tie ? 6 : 0), x1 = cx - 6 - (String(f).length - 1) * 4;
           mk("line", { x1: x0, x2: x1, y1: up ? y + 4 : y - 4, y2: up ? y - 4 : y + 4, class: "tab-slur" }, g);
-        } else if (t === "s" || t === "si") {
-          const up = t === "si" || !pn || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
+        } else if (m.start === "s" || m.start === "i") {
+          const up = m.start === "i" || !pn || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
           mk("line", { x1: x0, x2: x1, y1: up ? y + 5 : y - 5, y2: up ? y - 5 : y + 5, class: "tab-slur" }, g);
-        } else if (t === "so") {
+        }
+        // while it rings
+        if (m.move === "o") {
           const x0 = cx + 8 + (String(f).length - 1) * 4;
           mk("line", { x1: x0, x2: x0 + 10, y1: y - 5, y2: y + 5, class: "tab-slur" }, g);
-        } else if (t[0] === "b" || t[0] === "d") drawBend(g, st, n, cx, i);
+        } else if (m.move === "t") {
+          // a trill: "tr" over the staff, the other fret in parentheses after this one
+          const t = mk("text", { x: cx + 12 + (String(f).length - 1) * 4, y: y + 4, class: "tab-trill" }, g); t.textContent = `(${m.trill})`;
+          if (!labels.includes("tr")) labels.push("tr");
+        } else if (m.move) drawBend(g, st, n, cx, i);
       }
-      if (st.notes.some(n => n[2] === "v")) {
+      if (st.notes.some(n => markOf(n).v)) {
         // vibrato: a wavy line over the note
         mk("path", { d: `M${cx - 8} ${TAB.top - 14} q2 -4 4 0 t4 0 t4 0 t4 0`, class: "tab-slur" }, g);
       } else if (labels.length) { const t = mk("text", { x: cx, y: TAB.top - 12, class: "tab-tech" }, g); t.textContent = labels.join(" "); }
     }
+    // staccato: a dot over the staff
+    if (st.stac) mk("circle", { cx, cy: TAB.top - 5, r: 2, class: "tab-repeat" }, g);
     // bridge mute: "P.M." where a run starts (and at a new row), a dashed line on over the run
     if (st.pm) {
       const prev = song.steps[i - 1], next = song.steps[i + 1];
@@ -188,10 +196,11 @@ function renderTab(container, song, opts = {}) {
       mk("rect", { x: cx - 9, y: y - 9, width: 18, height: 18, rx: 4, class: "tab-bg" }, g);
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-x" }, g); t.textContent = "×";
     }
-    for (const [s, f] of st.notes) {
-      const y = TAB.top + (s - 1) * TAB.row, label = st.harm ? `<${f}>` : String(f);
+    for (const n of st.notes) {
+      // (a grace note smaller)
+      const [s, f] = n, y = TAB.top + (s - 1) * TAB.row, label = markOf(n).harm ? `<${f}>` : String(f);
       mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
-      const t = mk("text", { x: cx, y: y + 5, class: "tab-fret" }, g); t.textContent = label;
+      const t = mk("text", { x: cx, y: y + 5, class: st.grace ? "tab-fret tab-grace" : "tab-fret" }, g); t.textContent = label;
     }
     const held = st.tie && song.steps.slice(0, i).reverse().find(x => x.notes.length);
     if (held) {
@@ -242,7 +251,7 @@ function renderTab(container, song, opts = {}) {
   // standard TAB bend marks: a curved arrow up from the fret to "full" / "1/2" above the staff;
   // a release starts bent, so it gets a straight arrow up to "full" / "1/2" and a curved arrow back down
   function drawBend(g, st, note, cx, i) {
-    const [s, f, t] = note, amount = t[1] === "1" ? 1 : t[1] ? +t[1] : 0;
+    const [s, f] = note, t = note[2].move, amount = t[1] === "1" ? 1 : t[1] ? +t[1] : 0;
     const y = TAB.top + (s - 1) * TAB.row, ax = cx + 20, tip = 16;
     const head = (x, yy, up) => mk("path", { d: up ? `M${x} ${yy} l-3.5 7 h7 z` : `M${x} ${yy} l-3.5 -7 h7 z`, class: "tab-arrowhead" }, g);
     const label = (x, amount) => { const t = mk("text", { x, y: tip - 4, class: "tab-bendlabel" }, g); t.textContent = amount === 1 ? "1/2" : "full"; };
@@ -252,11 +261,11 @@ function renderTab(container, song, opts = {}) {
       label(ax, amount || 2);
     } else {
       // the bend amount comes from the bend this releases (same string and fret), else a whole step
-      const bendOf = x => x.notes.find(m => m[0] === s && m[1] === f && m[2] && m[2][0] === "b");
-      const from = song.steps.slice(0, i).reverse().map(bendOf).find(Boolean);
+      const bentOf = x => x.notes.find(m => m[0] === s && m[1] === f && bendOf(m[2]));
+      const from = song.steps.slice(0, i).reverse().map(bentOf).find(Boolean);
       mk("line", { x1: cx, x2: cx, y1: y - 10, y2: tip + 6, class: "tab-arrow" }, g);
       head(cx, tip, true);
-      label(cx, amount || (from ? (from[2][1] === "1" ? 1 : 2) : 2));
+      label(cx, amount || (from ? bendOf(from[2]) : 2));
       mk("path", { d: `M${cx + 3} ${tip + 2} Q${ax} ${tip + 2} ${ax} ${y - 15}`, class: "tab-arrow" }, g);
       head(ax, y - 9, false);
     }
@@ -413,9 +422,10 @@ function renderTab(container, song, opts = {}) {
   };
 }
 
-const TECH_NAMES = { h: "ハンマリング", p: "プリング", s: "スライド", si: "スライドイン", so: "スライドアウト", v: "ビブラート",
-  b: "1音チョーキング", b2: "1音チョーキング", b1: "半音チョーキング", d: "チョーキングを戻す", d1: "チョーキングを戻す", d2: "チョーキングを戻す" };
+const MARK_NAMES = { h: "ハンマリング", p: "プリング", s: "スライド", i: "スライドイン", o: "スライドアウト", t: "トリル",
+  b: "1音チョーキング", b1: "半音チョーキング", d: "チョーキングを戻す", d1: "チョーキングを戻す", d2: "チョーキングを戻す" };
+const markNames = m => [m.start && MARK_NAMES[m.start], m.move && MARK_NAMES[m.move], m.v && "ビブラート", m.fast && "速く", m.harm && "ハーモニクス"].filter(Boolean).join("・");
 const stepLabel = st => st.brush ? "ブラッシング" : (st.chord || (st.notes.length ? stepMidis(st).map(noteName).join("+") : "休符"))
-  + (st.pm ? "（P.M.）" : "");
-const stepWhere = st => st.chord ? "" : [...st.notes.map(([s, f, t]) => `${s}弦${f}フレット${t ? `（${TECH_NAMES[t]}）` : ""}`),
-  ...(st.mute || []).map(s => `${s}弦ミュート`)].join("・") + (st.harm ? "（ハーモニクス）" : "");
+  + (st.pm ? "（P.M.）" : "") + (st.stac ? "（スタッカート）" : "") + (st.grace ? "（装飾音）" : "");
+const stepWhere = st => st.chord ? "" : [...st.notes.map(n => `${n[0]}弦${n[1]}フレット${n[2] ? `（${markNames(n[2])}）` : ""}`),
+  ...(st.mute || []).map(s => `${s}弦ミュート`)].join("・");
