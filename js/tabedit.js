@@ -4,9 +4,12 @@
 
 // marks for the whole note ("_.'?")
 const stepFlags = st => (st.pm ? "_" : "") + (st.stac ? "." : "") + (st.grace ? "'" : "") + (st.loose ? "?" : "");
-// one step as a text token ("6-3h?:2", "C", "r:2", "~:8")
-function stepToken(st, withLen) {
-  const len = withLen && st.len !== 1 && !st.grace ? ":" + st.len : "";
+// a length in written cells: "2", or a fraction ("1/3") when the song counts in finer cells (scale)
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+const lenText = (len, scale = 1) => { const g = gcd(len, scale); return scale / g === 1 ? String(len / g) : `${len / g}/${scale / g}`; };
+// one step as a text token ("6-3h?:2", "C", "r:2", "~:8", "6-3:1/3")
+function stepToken(st, withLen, scale = 1) {
+  const len = withLen && st.len !== scale && !st.grace ? ":" + lenText(st.len, scale) : "";
   if (st.tie) return "~" + len;
   if (st.brush) return "x" + (st.loose ? "?" : "") + len;
   if (!st.notes.length) return "r" + len;
@@ -35,7 +38,8 @@ const stepSig = st => noteSig(st) + JSON.stringify([st.bpm || 0, !!st.repStart, 
 // ("| C*4 | G Am |" rather than "| C:2 C:2 C:2 C:2 | G:4 Am:4 |").
 // The first step's tempo goes in front of the first bar ("@bpm90 | C G |").
 // Comments ("% ...") go on their own lines before their step (tail: after the last bar).
-function stepsToText(steps, grid, timeSig, prefix, tail) {
+// (grid: cells per whole note inside; scale: inside cells per written cell, for fractions like ":1/3")
+function stepsToText(steps, grid, timeSig, prefix, tail, scale = 1) {
   const lines = st => (st.comments || []).map(c => `% ${c}\n`).join("");
   const barCells = timeSig[0] * grid / 4, bars = [];
   let cell = 0;
@@ -62,14 +66,16 @@ function stepsToText(steps, grid, timeSig, prefix, tail) {
     }
     const tok = (r, open) => {
       let t;
-      if (!r.st.chord || r.n === 1) t = open && r.st.chord ? stepToken(r.st, false) : stepToken(r.st, true);
-      else t = `${r.st.chord}*${r.n}${stepFlags(r.st)}` + (open ? "" : ":" + r.st.len * r.n);
+      if (!r.st.chord || r.n === 1) t = open && r.st.chord ? stepToken(r.st, false, scale) : stepToken(r.st, true, scale);
+      else t = `${r.st.chord}*${r.n}${stepFlags(r.st)}` + (open ? "" : ":" + lenText(r.st.len * r.n, scale));
       // (a comment inside the bar breaks the line there; one on the bar's first note goes before the bar)
       return (r.st !== bar[0] && r.st.comments ? "\n" + lines(r.st) : "") + marked(r.st, r.last, t, voltaTok.get(r.st) || "", r.st === steps[0]);
     };
     const short = runs.map(r => tok(r, true)).join(" ");
     const pre = (bi === 0 ? lead : "") + (bar[0].volta && !voltaTok.has(bar[0]) ? `@alt${bar[0].volta} ` : "");
-    if (same(parseSongText(`${pre}|${short}|`, { grid, timeSig }).steps, bar.map(strip))) return short;
+    const back = parseSongText(`${pre}|${short}|`, { grid: grid / scale, timeSig }).steps;
+    back.forEach(st => { st.len = Math.round(st.len * scale); });
+    if (same(back, bar.map(strip))) return short;
     return runs.map(r => tok(r, false)).join(" ");
   });
   const fb = bars.filter(Boolean);
@@ -80,11 +86,11 @@ function stepsToText(steps, grid, timeSig, prefix, tail) {
 }
 
 function lenChoices(grid, cur) {
-  const list = [[grid / 16, "16分"], [grid / 8, "8分"], [grid * 3 / 16, "付点8分"], [grid / 4, "4分"], [grid * 3 / 8, "付点4分"],
+  const list = [[grid / 24, "3連16分"], [grid / 12, "3連8分"], [grid / 6, "3連4分"], [grid / 16, "16分"], [grid / 8, "8分"], [grid * 3 / 16, "付点8分"], [grid / 4, "4分"], [grid * 3 / 8, "付点4分"],
     [grid / 2, "2分"], [grid * 3 / 4, "付点2分"], [grid, "全"]].filter(([n]) => Number.isInteger(n) && n >= 1);
   const seen = new Set(), out = [];
   for (const [n, l] of list) if (!seen.has(n)) { seen.add(n); out.push([n, l + "音符"]); }
-  if (cur && !seen.has(cur)) out.push([cur, `${cur}マス`]);
+  if (cur && !seen.has(cur)) out.push([cur, `${lenText(cur, (ed.song && ed.song.scale) || 1)}マス`]);
   return out.sort((a, b) => a[0] - b[0]);
 }
 
@@ -161,7 +167,7 @@ function edWhere(i) {
   const song = ed.song, barCells = song.timeSig[0] * song.grid / 4, beat = song.grid / 4;
   const cell = song.steps.slice(0, i).reduce((a, x) => a + x.len, 0), inBar = cell % barCells;
   const b = Math.floor(inBar / beat) + 1, off = inBar % beat;
-  const gcd = (a, c) => (c ? gcd(c, a % c) : a), g = gcd(off, song.grid);
+  const g = gcd(off, song.grid);
   return `${Math.floor(cell / barCells) + 1}小節目 ${b}${off ? `+${off / g}/${song.grid / g}` : ""}拍目`;
 }
 
@@ -291,9 +297,11 @@ function edChange(fn, opts = {}) {
   const sel = fn(steps, { ...ed.song, grid });
   if (sel === false) return;
   // the grid (when not the song's own) and the capo lead the text: "@cell16 @capo3 | ... |"
-  const prefix = [grid !== ed.grid ? `@cell${grid}` : "", capo ? `@capo${capo}` : ""].filter(Boolean).join(" ");
+  // (the written cell: a song with triplets counts in finer cells inside)
+  const scale = ed.song.scale || 1, written = grid / scale;
+  const prefix = [written !== ed.grid ? `@cell${written}` : "", capo ? `@capo${capo}` : ""].filter(Boolean).join(" ");
   const tail = ed.song.tail || [];
-  edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix ? prefix + " " : "", tail)
+  edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix ? prefix + " " : "", tail, scale)
     : [prefix, ...tail.map(c => `% ${c}`)].filter(Boolean).join("\n"), sel, opts.merge);
 }
 

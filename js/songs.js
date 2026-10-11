@@ -149,6 +149,7 @@ function chordPitchClasses(name) {
  *                       (A B A C); "@alt0" ends an ending early; outside a repeat they are only shown
  *                       (older text: "@1" "@2" "@0")
  *   a "@[" with no "@]" repeats up to the next "@[" or the end of the song
+ *   6-3:1/3  6-3:2/3    a fraction of a cell (triplets: buildSong counts in finer cells inside, song.scale)
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  *   @cell16 ...         at the very start: one cell is a 16th note (@cell32: a 32nd; older text: "@16")
  *   @capo3 ...          at the very start: capo on the 3rd fret (frets are counted from the capo)
@@ -219,7 +220,7 @@ function parseSongText(text, opts = {}) {
       const cut = tok.search(/[_.?'’‘:]/);
       let body = cut < 0 ? tok : tok.slice(0, cut);
       const suffix = cut < 0 ? "" : tok.slice(cut);
-      const sm = suffix.match(/[_.?'’‘]|:\d+|\*\d+/g) || [];
+      const sm = suffix.match(/[_.?'’‘]|:\d+(?:\/\d+)?|\*\d+/g) || [];
       const whole = sm.join("") === suffix;
       // (a chord's "*4" may come among them too: "E5_*4")
       const strums = sm.find(x => x[0] === "*");
@@ -228,8 +229,10 @@ function parseSongText(text, opts = {}) {
       const flags = sm.map(x => (x[0] === ":" ? ":" : "‘’".includes(x) ? "'" : x));
       if (new Set(flags).size !== flags.length) { errors.push(`「${tok}」：同じ記号が2回あります`); continue; }
       const lenStr = sm.find(x => x[0] === ":");
-      const len = lenStr ? parseInt(lenStr.slice(1), 10) : null;
-      if (lenStr && !(len > 0)) { errors.push(`「${tok}」の長さが読めません`); continue; }
+      // ":2" cells, or a fraction of a cell (":1/3" "2/3": triplets)
+      const lenM = lenStr && /^:(\d+)(?:\/(\d+))?$/.exec(lenStr);
+      const len = lenM ? +lenM[1] / (lenM[2] ? +lenM[2] : 1) : null;
+      if (lenStr && !(len > 0 && (!lenM[2] || (+lenM[2] >= 1 && +lenM[2] <= 16)))) { errors.push(`「${tok}」の長さが読めません（例 :2 :1/3 :2/3）`); continue; }
       const loose = flags.includes("?"), pm = flags.includes("_"), stac = flags.includes("."), grace = flags.includes("'");
       const rest = /^[rR~]$/.test(body), brush = /^[xX]$/.test(body);
       if (rest && (loose || pm || stac || grace)) { errors.push(`「${tok}」：休符・タイには _ . ' ? を付けられません`); continue; }
@@ -285,7 +288,7 @@ function parseSongText(text, opts = {}) {
     if (barOnly) { volta = 0; barOnly = false; }
     // chords without an explicit length fill the bar (or a whole bar each when no bars are written)
     const open = items.filter(i => i.len == null);
-    const used = items.reduce((a, i) => a + (i.len || 0), 0);
+    const used = Math.round(items.reduce((a, i) => a + (i.len || 0), 0) * 48) / 48;
     const share = usesBars ? Math.max(1, Math.floor((barCells - used) / (open.length || 1))) : barCells;
     for (const { split, ...i } of items) steps.push(Object.assign(i, { len: i.len ?? (usesBars ? share : Math.max(1, Math.round(barCells / (split || 1)))) }));
   }
@@ -381,9 +384,14 @@ function buildSong(s) {
   }
   text = kept + text;
   const timeSig = s.timeSig || [4, 4], parsed = parseSongText(text, { timeSig, grid });
+  // fractions of a cell (":1/3"): the song counts in finer cells inside (scale per written cell), so
+  // every length stays a whole number; the editor writes them back as fractions
+  let scale = 1;
+  while (scale < 48 && !parsed.steps.every(st => Math.abs(st.len * scale - Math.round(st.len * scale)) < 1e-6)) scale++;
+  if (scale > 1) parsed.steps.forEach(st => { st.len = Math.round(st.len * scale); });
   // the tempo in force at each step ("@bpm" changes it from that step on; older songs: s.bpm)
   let tempo = s.bpm || 80;
   parsed.steps.forEach(st => { if (capo) st.capo = capo; if (st.bpm) tempo = st.bpm; st.tempo = tempo; });
   const order = playOrder(parsed.steps);
-  return { ...s, timeSig, grid, capo, bpm: parsed.steps.length ? parsed.steps[0].tempo : tempo, order, ...parsed };
+  return { ...s, timeSig, grid: grid * scale, scale, capo, bpm: parsed.steps.length ? parsed.steps[0].tempo : tempo, order, ...parsed };
 }
