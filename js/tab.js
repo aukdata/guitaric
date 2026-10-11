@@ -1,6 +1,8 @@
 /* ===== TAB rendering (SVG) ===== */
 // scale: drawn size on screen relative to the layout units below (0.7 = 70%)
-const TAB = { cell: 30, minStep: 40, row: 22, top: 46, pad: 16, scale: 0.7 };
+const TAB = { cell: 30, minStep: 40, row: 22, top: 46, pad: 16,
+  // 1.2× larger with a mouse (a PC screen is read from further away)
+  get scale() { return typeof matchMedia === "function" && matchMedia("(hover: hover) and (pointer: fine)").matches ? 0.84 : 0.7; } };
 const STRING_LABELS = ["e", "B", "G", "D", "A", "E"];
 const BAR_STRIP = 24; // height of the bar strip over the staff in the editor
 

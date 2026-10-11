@@ -165,7 +165,15 @@ function brushSound(t, out, vol = 1.8) {
 // one step on its own (the editor window's ▶, a double tap in practice); a new one cuts the last off
 let preview = null;
 function previewStep(song, i, rate) {
-  const st = song.steps[i];
+  let st = song.steps[i];
+  // a tie: the note it holds, for the tie's length (moved as the tie's marks say)
+  if (st && st.tie) {
+    const held = song.steps.slice(0, i).reverse().find(x => x.notes.length);
+    if (!held) return;
+    const m = st.tieMarks || {};
+    st = { ...held, len: st.len, grace: false, stac: false,
+      notes: held.notes.map(n => { const mm = { ...(markOf(n).harm ? { harm: true } : {}), ...m }; return Object.keys(mm).length ? [n[0], n[1], mm] : [n[0], n[1]]; }) };
+  }
   if (!st || !isPlayed(st)) return;
   ensureContext();
   if (preview) { preview.sources.forEach(src => { try { src.stop(); } catch (e) {} }); preview.gain.disconnect(); }

@@ -232,7 +232,7 @@ function edShowPop() {
   const kind = st.brush ? "brush" : st.notes.length || st.tie ? "note" : "rest";
   $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.kind === kind)));
   $("popNote").hidden = kind === "rest";
-  $("popPlay").disabled = !isPlayed(st);
+  $("popPlay").disabled = !isPlayed(st) && !st.tie;
   $("popFrets").querySelectorAll(".fret-row").forEach(row => {
     // -2: not played, -1: muted (x), 0..: the fret
     const rs = +row.dataset.s, n = st.notes.find(x => x[0] === rs);
