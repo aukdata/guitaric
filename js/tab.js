@@ -108,6 +108,11 @@ function renderTab(container, song, opts = {}) {
     if (playing >= 0 && groups[playing]) groups[playing].setAttribute("data-playing", "");
   }
 
+  // a tie shows its held frets in parentheses at the head of a bar or of a row
+  function tieParens(i) {
+    return song.steps[i].tie && (starts[i] % barCells === 0 || i === 0 || at[i - 1].row !== at[i].row);
+  }
+
   // the notes sounding at step i (for a tie, the note it holds)
   function heldNotes(i) {
     const st = song.steps[i];
@@ -155,7 +160,7 @@ function renderTab(container, song, opts = {}) {
         } else if (m.start === "s" && pn && at[i - 1].row === at[i].row) {
           // a slide: a slant line from the previous note's number to this one's
           const px = at[i - 1].x + Math.min(at[i - 1].w, TAB.minStep) / 2, up = pn[1] < f;
-          const x0 = px + 6 + (String(pn[1]).length - 1) * 4 + (prev.tie ? 6 : 0), x1 = cx - 6 - (String(f).length - 1) * 4;
+          const x0 = prev.tie && !tieParens(i - 1) ? px + 3 : px + 6 + (String(pn[1]).length - 1) * 4 + (prev.tie ? 6 : 0), x1 = cx - 6 - (String(f).length - 1) * 4;
           mk("line", { x1: x0, x2: x1, y1: up ? y + 4 : y - 4, y2: up ? y - 4 : y + 4, class: "tab-slur" }, g);
         } else if (m.start === "s" || m.start === "i") {
           const up = m.start === "i" || !pn || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
@@ -206,18 +211,22 @@ function renderTab(container, song, opts = {}) {
     }
     const held = st.tie && song.steps.slice(0, i).reverse().find(x => x.notes.length);
     if (held) {
-      // a tie: the held frets in parentheses, and a slur to them from the previous note (or tie)
-      // on each held string, over the note (under it for the lowest of several)
+      // a tie: a slur from the previous note (or tie) on each held string, over the note (under it
+      // for the lowest of several); the held frets in parentheses only at the head of a bar (or of a
+      // row, where there is no slur to read)
       const strings = held.notes.map(n => n[0]), low = Math.max(...strings);
       const sameRow = i > 0 && at[i - 1].row === at[i].row;
       const pv = at[i - 1], px = sameRow ? pv.x + Math.min(pv.w, TAB.minStep) / 2 : 0;
+      const paren = tieParens(i);
       for (const [s, f] of held.notes) {
         const y = TAB.top + (s - 1) * TAB.row, label = `(${f})`, half = 5 + label.length * 4;
         if (sameRow) {
-          const prevLabel = song.steps[i - 1].tie ? label : String(f);
-          const x0 = px + 1 + prevLabel.length * 4, x1 = cx - half + 3, dy = strings.length > 1 && s === low ? 1 : -1;
+          const prev = song.steps[i - 1];
+          const x0 = prev.tie ? px + (tieParens(i - 1) ? 1 + label.length * 4 : 2) : px + 1 + String(f).length * 4;
+          const x1 = paren ? cx - half + 3 : cx - 2, dy = strings.length > 1 && s === low ? 1 : -1;
           mk("path", { d: `M${x0} ${y + dy * 7} Q${(x0 + x1) / 2} ${y + dy * 15} ${x1} ${y + dy * 7}`, class: "tab-slur" }, g);
         }
+        if (!paren) continue;
         mk("rect", { x: cx - half, y: y - 9, width: 2 * half, height: 18, rx: 4, class: "tab-bg" }, g);
         const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-tie" }, g); t.textContent = label;
       }
