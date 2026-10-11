@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#b0521c"/>
+  <rect width="512" height="512" rx="96" fill="#1a98ff"/>
   <g stroke="#fff" stroke-opacity=".55" stroke-width="10">
     <line x1="96" y1="136" x2="416" y2="136"/><line x1="96" y1="184" x2="416" y2="184"/>
     <line x1="96" y1="232" x2="416" y2="232"/><line x1="96" y1="280" x2="416" y2="280"/>
     <line x1="96" y1="328" x2="416" y2="328"/><line x1="96" y1="376" x2="416" y2="376"/>
   </g>
   <g fill="#fff" font-family="Arial, sans-serif" font-weight="700" font-size="64" text-anchor="middle">
-    <circle cx="208" cy="184" r="34" fill="#b0521c"/><text x="208" y="206">3</text>
-    <circle cx="304" cy="280" r="34" fill="#b0521c"/><text x="304" y="302">2</text>
+    <circle cx="208" cy="184" r="34" fill="#1a98ff"/><text x="208" y="206">3</text>
+    <circle cx="304" cy="280" r="34" fill="#1a98ff"/><text x="304" y="302">2</text>
   </g>
 </svg>

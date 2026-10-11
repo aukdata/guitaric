@@ -5,8 +5,9 @@
   --fg: #1b2326;
   --muted: #5b686d;
   --line: #d2d9db;
-  --accent: #b0521c;
-  --accent-soft: #f3e1d5;
+  --accent: #1a98ff;
+  --accent-range: #0f7fdc; /* a shade darker: Chrome draws a dark track for a light accent-color */
+  --accent-soft: #dcefff;
   --good: #2c8655;
   --warn: #a8740f;
   --bad: #b23a3a;
@@ -17,13 +18,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #111618; --surface: #1a2124; --fg: #e3e9ea; --muted: #8e9ca0; --line: #2a3337;
-    --accent: #e48b50; --accent-soft: #3a2619; --good: #5cc48a; --warn: #e0b04a; --bad: #e57373;
+    --accent: #1a98ff; --accent-soft: #10304a; --good: #5cc48a; --warn: #e0b04a; --bad: #e57373;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #111618; --surface: #1a2124; --fg: #e3e9ea; --muted: #8e9ca0; --line: #2a3337;
-  --accent: #e48b50; --accent-soft: #3a2619; --good: #5cc48a; --warn: #e0b04a; --bad: #e57373;
+  --accent: #1a98ff; --accent-soft: #10304a; --good: #5cc48a; --warn: #e0b04a; --bad: #e57373;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -183,7 +184,7 @@ button.icon.ta-clear { position: absolute; top: 6px; right: 6px; min-width: 30px
 label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; color: var(--muted); }
 label.inline input[type=number] { width: 4.5em; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
 label.inline select { padding: 7px 8px; }
-.vol input { width: 110px; accent-color: var(--accent); }
+.vol input { width: 110px; accent-color: var(--accent-range); }
 .eff { font-family: var(--f-mono); font-size: .85rem; color: var(--muted); }
 .dots { display: inline-flex; gap: 6px; }
 .dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
@@ -348,7 +349,7 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .fret-str small { margin-left: 3px; font-size: .7rem; }
 .fret-row output { font-family: var(--f-mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); font-size: .9rem; }
 .fret-row.on output { color: var(--fg); font-weight: 500; }
-.ed-pop input[type="range"] { width: 100%; min-width: 0; margin: 0; accent-color: var(--accent); height: 18px; }
+.ed-pop input[type="range"] { width: 100%; min-width: 0; margin: 0; accent-color: var(--accent-range); height: 18px; }
 .fret-row:not(.on) input[type="range"] { accent-color: var(--muted); }
 .pop-row .pop-loose { margin-left: auto; font-size: .82rem; }
 .pop-row .pop-loose + .pop-loose { margin-left: 0; }
