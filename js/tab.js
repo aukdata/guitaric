@@ -79,17 +79,22 @@ function renderTab(container, song, opts = {}) {
         const x = tempoEnd = tempoMark(svg, 4, 10, song.bpm || 80);
         if (song.capo) { const t = mk("text", { x: x + 10, y: 10, class: "tab-capo" }, svg); t.textContent = `Capo ${song.capo}`; }
       }
-      // opts.barStrip: a strip over each bar (its part of this row) that selects the bar
+      // each bar's part of this row; opts.barStrip: a strip over it that selects the bar (else only
+      // the bar number, small over the staff)
       const segs = [];
-      if (opts.barStrip) for (const i of r.steps) {
+      for (const i of r.steps) {
         const seg = segs[segs.length - 1];
         if (seg && seg.bar === barOf[i]) seg.z = i; else segs.push({ bar: barOf[i], a: i, z: i });
       }
       const box = sg => ({ x: at[sg.a].x + 2, y: 0, width: at[sg.z].x + at[sg.z].w - at[sg.a].x - 4, height: BAR_STRIP, rx: 4 });
-      for (const sg of segs) mk("rect", { ...box(sg), class: "tab-barhead", "data-bar": sg.bar }, svg);
+      if (opts.barStrip) for (const sg of segs) mk("rect", { ...box(sg), class: "tab-barhead", "data-bar": sg.bar }, svg);
       for (const i of r.steps) groups[i] = drawStep(svg, i);
       drawRhythm(svg, r.steps);
       for (const sg of segs) {
+        if (!opts.barStrip) {
+          if (bars[sg.bar][0] === sg.a) { const t = mk("text", { x: at[sg.a].x + 2, y: TAB.top - 5, class: "tab-barno" }, svg); t.textContent = sg.bar + 1; }
+          continue;
+        }
         if (bars[sg.bar][0] === sg.a) {
           // at the bar's left end, after a tempo mark there
           const b = box(sg), st = song.steps[sg.a];
