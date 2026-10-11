@@ -140,7 +140,7 @@ svg.tab { display: block; padding: 0; border-radius: 0; } /* not the mode-tab bu
 .tab-bendlabel { font: 600 11px var(--f-body); fill: var(--fg); text-anchor: middle; }
 .tab-stem { stroke: var(--fg); stroke-width: 1.3; }
 .tab-beam, .tab-dot { fill: var(--fg); }
-.tab-flag { fill: none; stroke: var(--fg); stroke-width: 1.6; }
+.tab-flag { fill: var(--fg); stroke: none; }
 .tab-rest { font: 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
 .tab-step[data-playing] .tab-hl { fill: none; stroke: var(--bad); stroke-width: 2; }
 .tab-step[data-state="current"] .tab-hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }

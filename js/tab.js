@@ -356,7 +356,11 @@ function renderTab(container, song, opts = {}) {
       if (grp.length === 1) {
         // a lone 8th/16th: flags
         const n = grp[0];
-        for (let b = 0; b < beams(n.v); b++) mk("path", { d: `M${n.x} ${stemEnd - b * 6} q8 -3 9 -12`, class: "tab-flag" }, gr);
+        // a printed flag: thick where it leaves the stem, curving up and thinning to a point
+        for (let b = 0; b < beams(n.v); b++) {
+          const y = stemEnd - b * 7;
+          mk("path", { d: `M${n.x - 0.6} ${y} C${n.x + 5} ${y - 5} ${n.x + 11} ${y - 10} ${n.x + 8} ${y - 21} C${n.x + 9.5} ${y - 13} ${n.x + 5} ${y - 11} ${n.x - 0.6} ${y - 8} Z`, class: "tab-flag" }, gr);
+        }
         continue;
       }
       // rests in the group get a stem of their own down to the beam
