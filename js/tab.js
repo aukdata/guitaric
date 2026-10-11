@@ -74,8 +74,9 @@ function renderTab(container, song, opts = {}) {
         const t = mk("text", { x: TAB.pad, y: y + 4, class: "tab-label" }, svg); t.textContent = STRING_LABELS[s];
       }
       for (const bx of [left, ...r.barEnds]) mk("line", { x1: bx, x2: bx, y1: TAB.top, y2: TAB.top + TAB.row * 5, class: "tab-bar" }, lines);
+      let tempoEnd = 0;
       if (ri === 0) {
-        const x = tempoMark(svg, 4, 10, song.bpm || 80);
+        const x = tempoEnd = tempoMark(svg, 4, 10, song.bpm || 80);
         if (song.capo) { const t = mk("text", { x: x + 10, y: 10, class: "tab-capo" }, svg); t.textContent = `Capo ${song.capo}`; }
       }
       // opts.barStrip: a strip over each bar (its part of this row) that selects the bar
@@ -90,7 +91,12 @@ function renderTab(container, song, opts = {}) {
       drawRhythm(svg, r.steps);
       for (const sg of segs) {
         if (bars[sg.bar][0] === sg.a) {
-          const b = box(sg), t = mk("text", { x: b.x + b.width - 4, y: 16, class: "tab-barno" }, svg);
+          // at the bar's left end, after a tempo mark there
+          const b = box(sg), st = song.steps[sg.a];
+          let nx = b.x + 4;
+          if (sg.a === r.steps[0]) nx = Math.max(nx, tempoEnd);
+          if (sg.a > 0 && st.bpm) nx = Math.max(nx, at[sg.a].x + 14 + 7 * String(st.bpm).length + 10 + (volta[sg.a] ? 16 : 0));
+          const t = mk("text", { x: nx, y: 16, class: "tab-barno" }, svg);
           t.textContent = sg.bar + 1;
         }
         mk("rect", { ...box(sg), class: "tab-barhit", "data-bar": sg.bar }, svg);
@@ -100,6 +106,14 @@ function renderTab(container, song, opts = {}) {
     container.replaceChildren(frag);
     states.forEach((v, i) => { if (v) groups[i].setAttribute("data-state", v); });
     if (playing >= 0 && groups[playing]) groups[playing].setAttribute("data-playing", "");
+  }
+
+  // the notes sounding at step i (for a tie, the note it holds)
+  function heldNotes(i) {
+    const st = song.steps[i];
+    if (!st.tie) return st.notes;
+    const h = song.steps.slice(0, i).reverse().find(x => x.notes.length);
+    return h ? h.notes : [];
   }
 
   function drawStep(svg, i) {
@@ -130,12 +144,17 @@ function renderTab(container, song, opts = {}) {
         const [s, f, t] = n;
         if (!t) continue;
         const y = TAB.top + (s - 1) * TAB.row;
-        const prev = song.steps[i - 1], pn = prev && !prev.chord && prev.notes.find(m => m[0] === s);
+        const prev = song.steps[i - 1], pn = prev && !prev.chord && heldNotes(i - 1).find(m => m[0] === s);
         const label = { h: "H", p: "P", s: "sl." }[t];
         if (label && !labels.includes(label)) labels.push(label);
         if ((t === "h" || t === "p") && pn && at[i - 1].row === at[i].row) {
           const px = at[i - 1].x + Math.min(at[i - 1].w, TAB.minStep) / 2;
           mk("path", { d: `M${px + 4} ${y - 9} Q${(px + cx) / 2} ${y - 20} ${cx - 4} ${y - 9}`, class: "tab-slur" }, g);
+        } else if (t === "s" && pn && at[i - 1].row === at[i].row) {
+          // a slide: a slant line from the previous note's number to this one's
+          const px = at[i - 1].x + Math.min(at[i - 1].w, TAB.minStep) / 2, up = pn[1] < f;
+          const x0 = px + 6 + (String(pn[1]).length - 1) * 4 + (prev.tie ? 6 : 0), x1 = cx - 6 - (String(f).length - 1) * 4;
+          mk("line", { x1: x0, x2: x1, y1: up ? y + 4 : y - 4, y2: up ? y - 4 : y + 4, class: "tab-slur" }, g);
         } else if (t === "s" || t === "si") {
           const up = t === "si" || !pn || pn[1] < f, x0 = cx - 18, x1 = cx - 8;
           mk("line", { x1: x0, x2: x1, y1: up ? y + 5 : y - 5, y2: up ? y - 5 : y + 5, class: "tab-slur" }, g);
@@ -158,8 +177,13 @@ function renderTab(container, song, opts = {}) {
       const x2 = next && next.pm && at[i + 1] && at[i + 1].row === at[i].row ? at[i + 1].x + Math.min(at[i + 1].w, TAB.minStep) / 2 : cx + 8;
       if (x2 > x1) mk("line", { x1, x2, y1: 16, y2: 16, class: "tab-pmline" }, g);
     }
-    // brushing: x on every string; a muted string among the notes: x on it
-    for (const s of st.brush ? [1, 2, 3, 4, 5, 6] : st.mute || []) {
+    // brushing: one big x across the middle of the strings, as in printed TAB
+    if (st.brush) {
+      const y0 = TAB.top + 2.5 * TAB.row - 10, y1 = TAB.top + 2.5 * TAB.row + 10;
+      mk("path", { d: `M${cx - 9} ${y0} L${cx + 9} ${y1} M${cx + 9} ${y0} L${cx - 9} ${y1}`, class: "tab-brush" }, g);
+    }
+    // a muted string among the notes: x on it
+    for (const s of st.brush ? [] : st.mute || []) {
       const y = TAB.top + (s - 1) * TAB.row;
       mk("rect", { x: cx - 9, y: y - 9, width: 18, height: 18, rx: 4, class: "tab-bg" }, g);
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-x" }, g); t.textContent = "×";
@@ -170,8 +194,18 @@ function renderTab(container, song, opts = {}) {
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret" }, g); t.textContent = label;
     }
     const held = st.tie && song.steps.slice(0, i).reverse().find(x => x.notes.length);
-    if (held) {
-      // a tie shows the held frets in parentheses
+    if (held && i > 0 && at[i - 1].row === at[i].row) {
+      // a tie: a slur from the previous note (or tie) on each held string, over the note
+      // (under it for the lowest of several)
+      const pv = at[i - 1], px = pv.x + Math.min(pv.w, TAB.minStep) / 2, strings = held.notes.map(n => n[0]);
+      const low = Math.max(...strings);
+      for (const s of strings) {
+        const y = TAB.top + (s - 1) * TAB.row, under = strings.length > 1 && s === low;
+        const x0 = px + (song.steps[i - 1].tie ? 2 : 7), x1 = cx - 2, dy = under ? 1 : -1;
+        mk("path", { d: `M${x0} ${y + dy * 7} Q${(x0 + x1) / 2} ${y + dy * 15} ${x1} ${y + dy * 7}`, class: "tab-slur" }, g);
+      }
+    } else if (held) {
+      // a tie at the start of a row shows the held frets in parentheses
       for (const [s, f] of held.notes) {
         const y = TAB.top + (s - 1) * TAB.row, label = `(${f})`;
         mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
@@ -287,7 +321,7 @@ function renderTab(container, song, opts = {}) {
     const restY = TAB.top + 3 * TAB.row + 4; // just under a rest symbol
     // stems start just under the lowest fret number of the step (a tie: the held note)
     const lowY = st => {
-      if (st.brush) return staffBottom + 10;
+      if (st.brush) return TAB.top + 2.5 * TAB.row + 13;
       const ns = st.notes.length ? st.notes : (st.tie && song.steps.slice(0, song.steps.indexOf(st)).reverse().find(x => x.notes.length) || { notes: [] }).notes;
       return TAB.top + (Math.max(...ns.map(n => n[0])) - 1) * TAB.row + 10;
     };

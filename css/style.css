@@ -132,6 +132,7 @@ svg.tab { display: block; padding: 0; border-radius: 0; } /* not the mode-tab bu
 .tab-pmline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 .tab-capo { font: 600 11px var(--f-body); fill: var(--muted); }
 .tab-slur { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+.tab-brush { fill: none; stroke: var(--fg); stroke-width: 1.6; stroke-linecap: round; }
 .tab-fret.tab-tie { fill: var(--muted); font-size: 12px; }
 .tab-arrow { fill: none; stroke: var(--fg); stroke-width: 1.3; }
 .tab-arrowhead, .tab-restsym { fill: var(--fg); }
@@ -394,4 +395,4 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .tab-barhead.sel { fill: var(--accent-soft); fill-opacity: 1; stroke: var(--accent); stroke-width: 1.5; }
 .tab-barhit { fill: transparent; cursor: pointer; }
 .tab-barhit:hover { fill: var(--accent); fill-opacity: .08; }
-.tab-barno { font: 500 11px var(--f-body); fill: var(--muted); text-anchor: end; }
+.tab-barno { font: 500 11px var(--f-body); fill: var(--muted); text-anchor: start; }
