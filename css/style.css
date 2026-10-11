@@ -184,6 +184,10 @@ button.icon.ta-clear { position: absolute; top: 6px; right: 6px; min-width: 30px
 label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; color: var(--muted); }
 label.inline input[type=number] { width: 4.5em; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
 label.inline select { padding: 7px 8px; }
+/* a slider moves only by dragging its knob: a tap on the bar does nothing */
+input[type="range"] { pointer-events: none; }
+input[type="range"]::-webkit-slider-thumb { pointer-events: auto; }
+input[type="range"]::-moz-range-thumb { pointer-events: auto; }
 .vol input { width: 110px; accent-color: var(--accent-range); }
 .eff { font-family: var(--f-mono); font-size: .85rem; color: var(--muted); }
 .dots { display: inline-flex; gap: 6px; }

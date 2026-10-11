@@ -687,7 +687,7 @@ function edApplyText() {
       `<input type="range" min="-2" max="${MAX_FRET}" step="1" aria-label="${s}弦のフレット"><output></output>`;
     const range = row.querySelector("input");
     range.addEventListener("input", () => { const f = +range.value; edFret(f === -2 ? null : f === -1 ? "x" : f, s, "fret" + s); });
-    range.addEventListener("pointerdown", () => { if (ed.sel && ed.sel.s !== s) { ed.sel = { i: ed.sel.i, s }; edDrawCursor(); edStatus(); edShowPop(); } });
+    row.addEventListener("pointerdown", () => { if (ed.sel && ed.sel.s !== s) { ed.sel = { i: ed.sel.i, s }; edDrawCursor(); edStatus(); edShowPop(); } });
     frets.append(row);
   }
 }
