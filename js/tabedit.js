@@ -228,8 +228,8 @@ function edShowPop() {
   const g = ed.sel && $("edTab").querySelector(`.tab-step[data-i="${ed.sel.i}"]`);
   if (!ed.popOpen || !g || ed.play || ed.song.errors.length) { pop.hidden = true; return; }
   const i = ed.sel.i, st = ed.song.steps[i], s = ed.sel.s;
-  // tabs: note / rest / brushing
-  const kind = st.brush ? "brush" : st.notes.length || st.tie ? "note" : "rest";
+  // tabs: note (brushing too: every string x) / rest
+  const kind = st.notes.length || st.tie || st.brush ? "note" : "rest";
   $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.kind === kind)));
   $("popNote").hidden = kind === "rest";
   $("popPlay").disabled = !isPlayed(st) && !st.tie;
@@ -247,24 +247,22 @@ function edShowPop() {
   // the selected string's marks (only on a note written string by string); a tie's marks move every
   // held note (no start, no harmonics)
   const n = !st.chord && st.notes.find(x => x[0] === s), m = st.tie ? st.tieMarks || {} : n ? markOf(n) : {};
-  for (const id of ["popStart", "popMove", "popVib", "popFast", "popHarm", "popTrill"]) $(id).disabled = !n && !(st.tie && !/Start|Harm/.test(id));
+  for (const id of ["popStart", "popMove", "popVib", "popHarm", "popTrill"]) $(id).disabled = !n && !(st.tie && !/Start|Harm/.test(id));
   $("popStart").value = m.start || "";
   $("popMove").value = !m.move ? "" : m.move[0] === "d" ? (n ? "d" + releaseBend(i, n) : m.move[1] ? m.move : "d2") : m.move;
   $("popTrill").hidden = m.move !== "t";
   if (m.move === "t" && document.activeElement !== $("popTrill")) $("popTrill").value = m.trill;
   $("popVib").checked = !!m.v;
-  $("popFast").checked = !!m.fast;
-  $("popFast").disabled = (!n && !st.tie) || !(m.start === "s" || m.start === "i" || (m.move && "bdo".includes(m.move[0])));
   $("popHarm").checked = !!m.harm;
   $("popHarm").disabled = !n || !HARMONICS[n[1]];
   // marks for the whole note
   const sounding = st.notes.length > 0;
-  for (const [id, k] of [["popPm", "pm"], ["popStac", "stac"], ["popGrace", "grace"], ["popLoose", "loose"]]) {
+  for (const [id, k] of [["popPm", "pm"], ["popStac", "stac"], ["popLoose", "loose"]]) {
     $(id).checked = !!st[k];
     $(id).disabled = k === "loose" ? !isPlayed(st) : !sounding;
   }
-  $("popLen").disabled = !!st.grace;
-  $("popLen").value = lenPos(st.len, ed.song.grid);
+  // the slider's left end is a grace note (no length)
+  $("popLen").value = st.grace ? 0 : lenPos(st.len, ed.song.grid) + 1;
   pop.hidden = false;
   // just below the note, kept inside the editor's width
   const body = $("edBody").getBoundingClientRect(), hl = g.querySelector(".tab-hl").getBoundingClientRect();
@@ -735,7 +733,6 @@ $("popKind").addEventListener("click", e => {
   const st = ed.song.steps[ed.sel.i];
   // a rest made a note starts with every string muted (brushing) until frets are chosen
   if (b.dataset.kind === "rest" && (isPlayed(st) || st.tie)) edRest();
-  else if (b.dataset.kind === "brush" && !st.brush) edBrush(false);
   else if (b.dataset.kind === "note" && !st.notes.length && !st.tie && !st.brush) edBrush(false);
   else edShowPop();
 });
@@ -743,10 +740,14 @@ $("popStart").addEventListener("change", e => edMark("start", e.target.value));
 $("popMove").addEventListener("change", e => edMark("move", e.target.value));
 $("popTrill").addEventListener("change", e => edTrill(Math.round(+e.target.value)));
 $("popVib").addEventListener("change", e => edMark("v", e.target.checked));
-$("popFast").addEventListener("change", e => edMark("fast", e.target.checked));
 $("popHarm").addEventListener("change", e => edMark("harm", e.target.checked));
-for (const [id, k] of [["popPm", "pm"], ["popStac", "stac"], ["popGrace", "grace"]]) $(id).addEventListener("change", e => edFlag(k, e.target.checked));
-$("popLen").addEventListener("input", () => edLenValue(+$("popLen").value));
+for (const [id, k] of [["popPm", "pm"], ["popStac", "stac"]]) $(id).addEventListener("change", e => edFlag(k, e.target.checked));
+$("popLen").addEventListener("input", () => {
+  const k = +$("popLen").value, st = ed.sel && ed.song.steps[ed.sel.i];
+  if (k > 0) { edLenValue(k - 1); return; }
+  // only a sounding note can be a grace note
+  if (st && st.notes.length && !st.grace) edFlag("grace", true); else edShowPop();
+});
 $("popLoose").addEventListener("change", e => edFlag("loose", e.target.checked));
 $("barBpmOn").addEventListener("change", e => edBarBpmOn(e.target.checked));
 $("barBpm").addEventListener("change", e => edBarBpm(Math.round(+e.target.value)));

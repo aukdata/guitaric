@@ -387,16 +387,17 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .len-ticks { position: relative; height: 1.2em; margin: 0 8px; font-size: .66rem; color: var(--muted); }
 .len-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 .len-ticks span.dotted { opacity: .6; }
-.len-ticks span:nth-child(1) { left: 0.000%; }
-.len-ticks span:nth-child(2) { left: 11.111%; }
-.len-ticks span:nth-child(3) { left: 22.222%; }
-.len-ticks span:nth-child(4) { left: 33.333%; }
-.len-ticks span:nth-child(5) { left: 44.444%; }
-.len-ticks span:nth-child(6) { left: 55.556%; }
-.len-ticks span:nth-child(7) { left: 66.667%; }
-.len-ticks span:nth-child(8) { left: 77.778%; }
-.len-ticks span:nth-child(9) { left: 88.889%; }
-.len-ticks span:nth-child(10) { left: 100.000%; }
+.len-ticks span:nth-child(1) { left: 0%; }
+.len-ticks span:nth-child(2) { left: 10%; }
+.len-ticks span:nth-child(3) { left: 20%; }
+.len-ticks span:nth-child(4) { left: 30%; }
+.len-ticks span:nth-child(5) { left: 40%; }
+.len-ticks span:nth-child(6) { left: 50%; }
+.len-ticks span:nth-child(7) { left: 60%; }
+.len-ticks span:nth-child(8) { left: 70%; }
+.len-ticks span:nth-child(9) { left: 80%; }
+.len-ticks span:nth-child(10) { left: 90%; }
+.len-ticks span:nth-child(11) { left: 100%; }
 .pop-row.actions { border-top: 1px solid var(--line); padding-top: 8px; }
 .pop-row.actions button { padding: 5px 10px; font-size: .85rem; }
 .pop-row.actions .danger { margin-left: auto; color: var(--bad); }

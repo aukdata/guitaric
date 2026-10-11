@@ -131,16 +131,17 @@
       <div id="edPop" class="ed-pop" role="dialog" aria-label="音の編集" hidden>
         <div class="pop-head">
           <div id="popKind" class="seg pop-kind" role="radiogroup" aria-label="編集する内容">
-            <button type="button" role="radio" class="icon" data-kind="note" title="音符" aria-label="音符"><i data-icon="music-3"></i></button><button type="button" role="radio" class="icon" data-kind="rest" title="休符（R）" aria-label="休符"><i data-icon="rest"></i></button><button type="button" role="radio" class="icon" data-kind="brush" title="ブラッシング（X）" aria-label="ブラッシング"><i data-icon="brush"></i></button>
+            <button type="button" role="radio" class="icon" data-kind="note" title="音符" aria-label="音符"><i data-icon="music-3"></i></button><button type="button" role="radio" class="icon" data-kind="rest" title="休符（R）" aria-label="休符"><i data-icon="rest"></i></button>
           </div>
           <button id="popPlay" type="button" class="icon" title="この音を鳴らす" aria-label="この音を鳴らす"><i data-icon="play"></i></button>
           <button id="popClose" type="button" class="icon pop-close" title="閉じる（Esc）" aria-label="閉じる"><i data-icon="x"></i></button>
         </div>
         <div id="popLenRow" class="pop-row pop-len">
           <div class="len-slider">
-            <input id="popLen" type="range" min="0" max="9" step="1" aria-label="音価">
-            <div class="len-ticks" aria-hidden="true"><span>32</span><span>16</span><span class="dotted">付</span><span>8</span><span class="dotted">付</span><span>4</span><span class="dotted">付</span><span>2</span><span class="dotted">付</span><span>全</span></div>
+            <input id="popLen" type="range" min="0" max="10" step="1" aria-label="音価">
+            <div class="len-ticks" aria-hidden="true"><span>装</span><span>32</span><span>16</span><span class="dotted">付</span><span>8</span><span class="dotted">付</span><span>4</span><span class="dotted">付</span><span>2</span><span class="dotted">付</span><span>全</span></div>
           </div>
+          <label class="inline" title="スタッカート（.）"><input id="popStac" type="checkbox">スタッカート</label>
         </div>
         <div id="popNote" class="pop-note">
           <div id="popFrets" class="pop-frets" aria-label="フレット"></div>
@@ -153,7 +154,6 @@
             </select>
             <input id="popTrill" type="number" min="0" max="24" inputmode="numeric" aria-label="トリルの相手のフレット" title="トリルの相手のフレット" hidden>
             <label class="inline" title="ビブラート（V）"><input id="popVib" type="checkbox">ビブラート</label>
-            <label class="inline" title="速く（F）"><input id="popFast" type="checkbox">速く</label>
             <label class="inline" title="ハーモニクス（N）"><input id="popHarm" type="checkbox">ハーモニクス</label>
           </div>
           <div class="pop-row">
@@ -162,8 +162,6 @@
           </div>
           <div id="popFlags" class="pop-row pop-flags" aria-label="音符全体">
             <label class="inline" title="ブリッジミュート（M）"><input id="popPm" type="checkbox">P.M.</label>
-            <label class="inline" title="スタッカート（.）"><input id="popStac" type="checkbox">スタッカート</label>
-            <label class="inline" title="装飾音（'）"><input id="popGrace" type="checkbox">装飾音</label>
             <label class="inline" title="判定ゆるめ（L）"><input id="popLoose" type="checkbox">判定ゆるめ</label>
           </div>
         </div>
