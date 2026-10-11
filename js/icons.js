@@ -2,6 +2,8 @@
  * Inlined so the app also works offline and from file://. <i data-icon="name"></i> is replaced by the icon. */
 const ICONS = {
   "arrow-left": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  "arrow-up": '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  "arrow-down": '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
   "chevron-left": '<path d="m15 18-6-6 6-6"/>',
   "chevron-right": '<path d="m9 18 6-6-6-6"/>',
   "skip-back": '<path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/>',

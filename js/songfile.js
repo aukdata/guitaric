@@ -45,7 +45,7 @@ async function importFiles(files) {
         if (mine.some(x => x.title === s.title && x.text === s.text)) { skipped++; continue; }
         const song = buildSong(s);
         if (!song.steps.length) { problems.push(`「${s.title}」は読めませんでした`); continue; }
-        const entry = { id: "song-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...s };
+        const entry = { id: "song-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...s, updated: Date.now() };
         mine.unshift(entry); added.push(entry);
       }
     } catch (e) { problems.push(`${f.name}：${e.message}`); }

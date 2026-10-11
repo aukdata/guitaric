@@ -657,7 +657,7 @@ function edStop(natural) {
 function edSave() {
   if (!ed.song.steps.length) return;
   const list = loadUserSongs();
-  const entry = { id: ed.id || "song-" + Date.now().toString(36), title: $("edTitle").value.trim() || "無題の曲", text: ed.text.trim() };
+  const entry = { id: ed.id || "song-" + Date.now().toString(36), title: $("edTitle").value.trim() || "無題の曲", text: ed.text.trim(), updated: Date.now() };
   if (ed.grid !== 8) entry.grid = ed.grid;
   const at = list.findIndex(x => x.id === entry.id);
   if (at >= 0) list[at] = entry; else list.unshift(entry);
