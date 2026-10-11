@@ -65,10 +65,10 @@ function noteSound(st, m, start, dur, ring, prev, out, seed, ties = []) {
   const fastStart = m.fast ? 0.3 : 1;
   if (from && from[1] !== fret) {
     at(start, from[1] - fret);
-    rate.exponentialRampToValueAtTime(1, start + Math.min(0.15 * fastStart, dur * 0.5 || 0.05));
+    rate.exponentialRampToValueAtTime(1, start + Math.min(0.04 * fastStart, dur * 0.5 || 0.02));
   } else if (m.start === "i") {
     at(start, -4);
-    rate.exponentialRampToValueAtTime(1, start + Math.min(0.12 * fastStart, dur * 0.5 || 0.05));
+    rate.exponentialRampToValueAtTime(1, start + Math.min(0.03 * fastStart, dur * 0.5 || 0.02));
   }
   // while it rings (the note, then each tie that moves it): a bend glides up to its pitch; a release
   // comes down (a note starts bent); a slide out falls away at the end; a trill alternates with the
@@ -85,7 +85,7 @@ function noteSound(st, m, start, dur, ring, prev, out, seed, ties = []) {
       at(t0 + Math.min(0.08 * fast, d * 0.3), note ? amount : cur);
       ramp(t0 + Math.min(0.25 * fast, d * 0.8 || 0.05), 0); cur = 0;
     } else if (mm.move === "o") {
-      const fall = t0 + Math.max(d * 0.5, d - 0.15 * fast);
+      const fall = t0 + Math.max(d * 0.5, d - 0.04 * fast);
       at(fall, cur);
       rate.exponentialRampToValueAtTime(2 ** ((cur - 7) / 12), t0 + d);
     } else if (mm.move === "t") {
