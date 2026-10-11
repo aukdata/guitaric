@@ -31,9 +31,9 @@ const stepSig = st => noteSig(st) + JSON.stringify([st.bpm || 0, !!st.repStart, 
 // Writes the steps as bar-separated text, keeping it short where the parser gives the same steps back
 // ("| C*4 | G Am |" rather than "| C:2 C:2 C:2 C:2 | G:4 Am:4 |").
 // The first step's tempo goes in front of the first bar ("@bpm90 | C G |").
-// Comments ("# ...") go on their own lines before their step (tail: after the last bar).
+// Comments ("% ...") go on their own lines before their step (tail: after the last bar).
 function stepsToText(steps, grid, timeSig, prefix, tail) {
-  const lines = st => (st.comments || []).map(c => `# ${c}\n`).join("");
+  const lines = st => (st.comments || []).map(c => `% ${c}\n`).join("");
   const barCells = timeSig[0] * grid / 4, bars = [];
   let cell = 0;
   for (const st of steps) { const b = Math.floor(cell / barCells); (bars[b] = bars[b] || []).push(st); cell += st.len; }
@@ -72,7 +72,7 @@ function stepsToText(steps, grid, timeSig, prefix, tail) {
   const fb = bars.filter(Boolean);
   const body = out.map((b, k) => (k && fb[k][0].comments ? " |\n" + lines(fb[k][0]) + "| " : k ? " | " : "") + b).join("");
   const head = steps[0] && steps[0].comments ? (prefix ? prefix.trim() + "\n" : "") + lines(steps[0]) : prefix || "";
-  const end = tail && tail.length ? "\n" + tail.map(c => `# ${c}`).join("\n") : "";
+  const end = tail && tail.length ? "\n" + tail.map(c => `% ${c}`).join("\n") : "";
   return (head + lead + "| " + body + " |" + end).replace(/ +\n/g, "\n");
 }
 
@@ -289,7 +289,7 @@ function edChange(fn, opts = {}) {
   const prefix = [grid !== ed.grid ? `@cell${grid}` : "", capo ? `@capo${capo}` : ""].filter(Boolean).join(" ");
   const tail = ed.song.tail || [];
   edSetText(steps.length ? stepsToText(steps, grid, ed.song.timeSig, prefix ? prefix + " " : "", tail)
-    : [prefix, ...tail.map(c => `# ${c}`)].filter(Boolean).join("\n"), sel, opts.merge);
+    : [prefix, ...tail.map(c => `% ${c}`)].filter(Boolean).join("\n"), sel, opts.merge);
 }
 
 function edSetText(text, sel, merge) {

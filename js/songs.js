@@ -129,15 +129,15 @@ function chordPitchClasses(name) {
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  *   @cell16 ...         at the very start: one cell is a 16th note (@cell32: a 32nd; older text: "@16")
  *   @capo3 ...          at the very start: capo on the 3rd fret (frets are counted from the capo)
- *   # ...               a line starting with "#" is a comment (kept with the next note: st.comments,
- *                       after the last note: tail)
+ *   % ...               a comment to the end of the line (kept with the next note: st.comments, after the
+ *                       last note: tail); older text: a line starting with "#"
  */
 function parseSongText(text, opts = {}) {
   const grid = opts.grid || 8, beats = (opts.timeSig || [4, 4])[0];
   const barCells = beats * grid / 4;
   // comment lines become "@#n" tokens, so they keep their place among the notes
   const comments = [];
-  text = text.replace(/^[ \t]*#(.*)$/gm, (_, c) => ` @#${comments.push(c.trim()) - 1} `);
+  text = text.replace(/%(.*)$|^[ \t]*#(.*)$/gm, (_, a, b) => ` @#${comments.push((a ?? b).trim()) - 1} `);
   const usesBars = text.includes("|");
   const bars = text.split("|").map(b => b.trim()).filter(Boolean);
   const steps = [], errors = [];
@@ -293,8 +293,8 @@ function buildSong(s) {
   let text = s.text || "", grid = s.grid || 8, capo = 0, m;
   // (comment lines before them are kept)
   let kept = "";
-  while ((m = /^\s*@(?:cell)?(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text)) || (m = /^\s*#.*(\n|$)/.exec(text))) {
-    if (m[0].trim()[0] === "#") kept += m[0].trim() + "\n";
+  while ((m = /^\s*@(?:cell)?(4|8|16|32|capo(\d{1,2}))(?=\s|\||$)/.exec(text)) || (m = /^\s*[#%].*(\n|$)/.exec(text))) {
+    if (/^[#%]/.test(m[0].trim())) kept += m[0].trim() + "\n";
     else if (m[2] != null) capo = Math.min(12, +m[2]); else grid = +m[1];
     text = text.slice(m[0].length);
   }
