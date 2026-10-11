@@ -348,10 +348,10 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .pop-row input#popChord { width: 6em; }
 .pop-len { flex-wrap: nowrap; }
 .pop-bpm input { width: 4.2em; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; }
-.pop-ctrl { display: grid; gap: 8px; justify-items: start; }
-.pop-ctrl[hidden], .pop-ctrl [hidden], #popLenRow[hidden] { display: none; }
-.pop-ctrl select { font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
-.pop-ctrl .seg button { font-weight: 700; min-width: 2.4em; }
+.bar-pop { width: min(300px, 100%); }
+.pop-title { font-weight: 600; color: var(--fg); font-size: .9rem; }
+.bar-pop select { font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+.bar-pop .seg button { font-weight: 700; min-width: 2.4em; }
 .pop-bpm input:disabled { opacity: .5; }
 .len-slider { flex: 1; min-width: 0; display: grid; }
 .len-ticks { position: relative; height: 1.2em; margin: 0 8px; font-size: .66rem; color: var(--muted); }
@@ -373,4 +373,14 @@ button.icon.rec[aria-pressed="true"] { background: var(--bad); border-color: var
 .pop-row.actions .danger { margin-left: auto; color: var(--bad); }
 .ed-pop > * { min-width: 0; }
 #popTech { width: 6.6em; }
+#edPop .pop-head { gap: 6px; }
+#edPop .pop-head > button.icon { min-width: 34px; padding: 5px 7px; }
+.pop-kind { flex: none; }
 .pop-head button[hidden] { display: none; }
+
+/* the bar strip over the staff in the editor: tap it for the bar's tempo and repeats */
+.tab-barhead { fill: var(--line); fill-opacity: .45; }
+.tab-barhead.sel { fill: var(--accent-soft); fill-opacity: 1; stroke: var(--accent); stroke-width: 1.5; }
+.tab-barhit { fill: transparent; cursor: pointer; }
+.tab-barhit:hover { fill: var(--accent); fill-opacity: .08; }
+.tab-barno { font: 500 11px var(--f-body); fill: var(--muted); text-anchor: end; }

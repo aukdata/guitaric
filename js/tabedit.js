@@ -83,7 +83,7 @@ const ED_DISCARD = "保存していない変更があります。\n変更を破�
 const NEW_SONG_TEXT = "| r:2 r:2 r:2 r:2 |";
 const ed = {
   loaded: false, id: null, grid: 8, text: "", saved: "",
-  song: null, tab: null, sel: null, popOpen: false,
+  song: null, tab: null, sel: null, popOpen: false, bar: null,
   undo: [], redo: [], digit: "", digitAt: 0, clip: null, play: null,
 };
 
@@ -113,7 +113,7 @@ function edLoad(d, saved) {
   $("edTitle").value = d ? d.title : "";
   ed.undo = []; ed.redo = [];
   ed.saved = saved || (d && d.id ? edSnapshot() : "");
-  ed.sel = { i: 0, s: 1 }; ed.popOpen = false;
+  ed.sel = { i: 0, s: 1 }; ed.popOpen = false; ed.bar = null;
   edRender();
   edSaveDraft();
 }
@@ -131,13 +131,14 @@ function edRender() {
   const song = ed.song, n = song.steps.length;
   if (ed.sel && ed.sel.i >= n) ed.sel = n ? { i: n - 1, s: ed.sel.s } : null;
   if (!ed.sel && n) ed.sel = { i: 0, s: 1 };
-  ed.tab = n ? renderTab($("edTab"), song) : null;
+  ed.tab = n ? renderTab($("edTab"), song, { barStrip: true }) : null;
   if (!n) $("edTab").innerHTML = '<p class="empty">まだ何もありません</p>';
-  if (ed.sel && ed.tab) ed.tab.setState(ed.sel.i, "current");
+  if (ed.sel && ed.tab && ed.bar == null) ed.tab.setState(ed.sel.i, "current");
   if (ed.play && ed.tab) ed.tab.setPlaying(ed.play.cur);
   edDrawCursor();
   edStatus();
   edShowPop();
+  edShowBarPop();
   if (!song.errors.length) $("edCapo").value = song.capo || 0;
   $("edUndo").disabled = !ed.undo.length;
   $("edRedo").disabled = !ed.redo.length;
@@ -172,7 +173,7 @@ function edStatus(msg) {
 function edDrawCursor() {
   const old = $("edTab").querySelector(".tab-cursor");
   if (old) old.remove();
-  if (!ed.sel) return;
+  if (!ed.sel || ed.bar != null) return;
   const g = $("edTab").querySelector(`.tab-step[data-i="${ed.sel.i}"]`);
   if (!g) return;
   const hl = g.querySelector(".tab-hl");
@@ -209,15 +210,11 @@ function edShowPop() {
   const g = ed.sel && $("edTab").querySelector(`.tab-step[data-i="${ed.sel.i}"]`);
   if (!ed.popOpen || !g || ed.play || ed.song.errors.length) { pop.hidden = true; return; }
   const i = ed.sel.i, st = ed.song.steps[i], s = ed.sel.s;
-  // tabs: note (a brushing stroke is a note with every string muted) / rest / tempo and repeats of this place
-  const kind = ed.popView === "ctrl" ? "ctrl" : isPlayed(st) || st.tie ? "note" : "rest";
+  // tabs: note (a brushing stroke is a note with every string muted) / rest
+  const kind = isPlayed(st) || st.tie ? "note" : "rest";
   $("popKind").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.kind === kind)));
   $("popNote").hidden = kind !== "note";
   $("popTech").hidden = kind !== "note";
-  $("popPlay").hidden = kind === "ctrl";
-  $("popLenRow").hidden = kind === "ctrl";
-  $("popCtrl").hidden = kind !== "ctrl";
-  $("popCtrlKind").hidden = kind !== "ctrl";
   $("popPlay").disabled = !isPlayed(st);
   $("popFrets").querySelectorAll(".fret-row").forEach(row => {
     const rs = +row.dataset.s, n = st.notes.find(x => x[0] === rs), f = n ? n[1] : -1;
@@ -237,26 +234,6 @@ function edShowPop() {
     o.disabled = !(o.value === "" || o.value === "pm" || o.value === "x" || single || (o.value === "n" && several));
   });
   $("popTech").value = techValue(st, i);
-  // tempo: the first step always sets it; later steps change it only when ticked (and show it on the TAB)
-  ed.ctrlKind = ed.ctrlKind || "tempo";
-  $("popCtrlKind").value = ed.ctrlKind;
-  $("popCtrlTempo").hidden = ed.ctrlKind !== "tempo";
-  $("popCtrlRepeat").hidden = ed.ctrlKind !== "repeat";
-  $("popBpmOn").checked = i === 0 || !!st.bpm;
-  $("popBpmOn").disabled = i === 0;
-  $("popBpm").disabled = !$("popBpmOn").checked;
-  if (document.activeElement !== $("popBpm")) $("popBpm").value = st.tempo || ed.song.bpm || 80;
-  // a repeat starts outside any repeat; its end, endings and count belong to the repeat the step is in
-  const blk = blockOf(ed.song, i), nv = nextVolta(ed.song, i);
-  $("popRepStart").setAttribute("aria-pressed", String(!!st.repStart));
-  $("popRepStart").disabled = !!blk && !st.repStart;
-  $("popRepEnd").setAttribute("aria-pressed", String(!!st.repEnd || !!st.autoEnd));
-  $("popRepEnd").disabled = !blk;
-  $("popVolta").textContent = (nv || (blk ? blk.count : 1)) + ".";
-  $("popVolta").setAttribute("aria-pressed", String(!!st.volta));
-  $("popVolta").disabled = !nv;
-  $("popRepCount").value = blk ? blk.count : 2;
-  $("popRepCount").disabled = !blk;
   const k = lenPos(st.len, ed.song.grid), exact = Math.abs(st.len / ed.song.grid - LEN_VALUES[k][0]) < 1e-9;
   $("popLen").value = k;
   $("popLenText").textContent = exact ? LEN_VALUES[k][1] : `${st.len}/${ed.song.grid}`;
@@ -280,7 +257,7 @@ function techValue(st, i) {
 
 function edSelect(i, s, open) {
   ed.sel = { i, s };
-  ed.digit = "";
+  ed.digit = ""; ed.bar = null;
   if (open != null) ed.popOpen = open;
   edRender();
   if (ed.tab) ed.tab.scrollTo(i);
@@ -373,16 +350,73 @@ function edTech(v, toggle) {
   });
 }
 
-// the tempo from this step on ("@bpm"): on = change it here (always on for the first step)
-function edBpmOn(on) {
-  if (!ed.sel) return;
-  const { i } = ed.sel, v = ed.song.steps[i].tempo || ed.song.bpm || 80;
-  edChange(steps => { if (on || i === 0) steps[i].bpm = v; else delete steps[i].bpm; });
+/* ----- the bar window: tempo and repeats belong to bars ----- */
+// steps grouped into bars (as on the TAB)
+function barsOf(song) {
+  const barCells = song.timeSig[0] * song.grid / 4, bars = [[]];
+  let cells = 0;
+  song.steps.forEach((st, i) => {
+    bars[bars.length - 1].push(i);
+    cells += st.len;
+    if (cells % barCells === 0 && i < song.steps.length - 1) bars.push([]);
+  });
+  return bars;
 }
-function edBpm(v) {
-  if (!ed.sel || !(v >= 20 && v <= 300)) return;
-  const { i } = ed.sel;
-  edChange(steps => { steps[i].bpm = v; }, { merge: "bpm" });
+const barOfStep = (song, i) => barsOf(song).findIndex(b => b.includes(i));
+
+function edOpenBar(b) {
+  const bar = barsOf(ed.song)[b];
+  if (!bar) return;
+  if (ed.play) edStop(false);
+  ed.bar = b; ed.popOpen = false;
+  ed.sel = { i: bar[0], s: ed.sel ? ed.sel.s : 1 };
+  edRender();
+}
+function edCloseBar() { ed.bar = null; edRender(); }
+
+function edShowBarPop() {
+  const pop = $("edBarPop"), bars = ed.song.steps.length ? barsOf(ed.song) : [];
+  if (ed.bar != null && !bars[ed.bar]) ed.bar = null;
+  $("edTab").querySelectorAll(".tab-barhead").forEach(r => r.classList.toggle("sel", +r.dataset.bar === ed.bar));
+  const hit = ed.bar != null && $("edTab").querySelector(`.tab-barhit[data-bar="${ed.bar}"]`);
+  if (!hit || ed.play || ed.song.errors.length) { pop.hidden = true; return; }
+  const steps = ed.song.steps, bar = bars[ed.bar], a = bar[0], z = bar[bar.length - 1];
+  $("barTitle").textContent = `${ed.bar + 1}小節目`;
+  // tempo at the bar's start: the first bar always sets it; later bars change it only when ticked
+  $("barBpmOn").checked = a === 0 || !!steps[a].bpm;
+  $("barBpmOn").disabled = a === 0;
+  $("barBpm").disabled = !$("barBpmOn").checked;
+  if (document.activeElement !== $("barBpm")) $("barBpm").value = steps[a].tempo || ed.song.bpm || 80;
+  // |: starts a repeat outside any (explicit) repeat; :|, the ending and the count belong to the repeat
+  const bs = blockOf(ed.song, a), be = blockOf(ed.song, z), blk = be || bs, nv = nextVolta(ed.song, a);
+  $("barRepStart").setAttribute("aria-pressed", String(!!steps[a].repStart));
+  $("barRepStart").disabled = !!bs && bs.start !== a && !!steps[bs.start].repStart;
+  $("barRepEnd").setAttribute("aria-pressed", String(!!steps[z].repEnd || !!steps[z].autoEnd));
+  $("barRepEnd").disabled = !be;
+  $("barVolta").textContent = (nv || (blk ? blk.count : 1)) + ".";
+  $("barVolta").setAttribute("aria-pressed", String(!!steps[a].volta));
+  $("barVolta").disabled = !nv;
+  $("barRepCount").value = blk ? blk.count : 2;
+  $("barRepCount").disabled = !blk;
+  pop.hidden = false;
+  // just below the strip, kept inside the editor's width
+  const body = $("edBody").getBoundingClientRect(), r0 = hit.getBoundingClientRect();
+  pop.style.left = Math.max(0, Math.min(r0.left - body.left, body.width - pop.offsetWidth)) + "px";
+  pop.style.top = (r0.bottom - body.top + 4) + "px";
+  const r = pop.getBoundingClientRect();
+  if (r.bottom > innerHeight && !pop.contains(document.activeElement)) window.scrollBy(0, Math.min(r.bottom - innerHeight + 8, r.top - 120));
+}
+
+// the tempo from the bar's start ("@bpm"): on = change it here (always on for the first bar)
+function edBarBpmOn(on) {
+  if (ed.bar == null) return;
+  const a = barsOf(ed.song)[ed.bar][0], v = ed.song.steps[a].tempo || ed.song.bpm || 80;
+  edChange(steps => { if (on || a === 0) steps[a].bpm = v; else delete steps[a].bpm; });
+}
+function edBarBpm(v) {
+  if (ed.bar == null || !(v >= 20 && v <= 300)) return;
+  const a = barsOf(ed.song)[ed.bar][0];
+  edChange(steps => { steps[a].bpm = v; }, { merge: "bpm" });
 }
 // the repeat a step is in (null: none)
 const blockOf = (song, i) => repeatBlocks(song.steps.map(cloneStep)).find(b => i >= b.start && i <= b.end) || null;
@@ -396,28 +430,27 @@ function nextVolta(song, i) {
   return n <= b.count ? n : null;
 }
 
-// repeat marks on this step: "start" (|: before it, outside a repeat), "end" (:| after it, inside one;
-// moves the repeat's end here), "volta" (the next ending, from here to the next ending or the repeat's
-// end), "count" (how many times the repeat this step is in plays)
-function edRepeat(kind, n) {
-  if (!ed.sel) return;
-  const { i } = ed.sel, b = blockOf(ed.song, i), v = kind === "volta" ? nextVolta(ed.song, i) : 0;
+// repeat marks of the bar: "start" (|: at its start), "end" (:| at its end; moves its repeat's end here),
+// "volta" (the next ending, from this bar to the next ending or the repeat's end; again: off from here),
+// "count" (how many times its repeat plays)
+function edBarRepeat(kind, n) {
+  if (ed.bar == null) return;
+  const bar = barsOf(ed.song)[ed.bar], a = bar[0], z = bar[bar.length - 1];
+  const bs = blockOf(ed.song, a), be = blockOf(ed.song, z), v = kind === "volta" ? nextVolta(ed.song, a) : 0;
   if (kind === "volta" && !v) return;
   edChange(steps => {
-    const st = steps[i];
-    if (kind === "start") { if (st.repStart) delete st.repStart; else if (!b) st.repStart = true; }
-    else if (kind === "end") {
-      if (st.repEnd) delete st.repEnd;
-      else if (b) { const count = steps[b.end].repEnd || 2; delete steps[b.end].repEnd; st.repEnd = count; }
-    } else if (kind === "count") { if (b) steps[b.end].repEnd = n; }
-    else if (st.volta) {
-      // off: the whole ending this step is in
-      let a = i, z = i;
-      while (a > 0 && steps[a - 1].volta === st.volta) a--;
-      while (z + 1 < steps.length && steps[z + 1].volta === st.volta) z++;
-      for (let k = a; k <= z; k++) delete steps[k].volta;
+    if (kind === "start") {
+      if (steps[a].repStart) delete steps[a].repStart;
+      else if (!(bs && bs.start !== a && steps[bs.start].repStart)) steps[a].repStart = true;
+    } else if (kind === "end") {
+      if (steps[z].repEnd) delete steps[z].repEnd;
+      else if (be) { const count = steps[be.end].repEnd || 2; delete steps[be.end].repEnd; steps[z].repEnd = count; }
+    } else if (kind === "count") { const b = be || bs; if (b) steps[b.end].repEnd = n; }
+    else if (steps[a].volta) {
+      const was = steps[a].volta;
+      for (let k = a; k < steps.length && steps[k].volta === was; k++) delete steps[k].volta;
     } else {
-      for (let k = i; k <= (b ? b.end : i); k++) { if (k > i && steps[k].volta) break; steps[k].volta = v; }
+      for (let k = a; k <= Math.max(bs ? bs.end : z, z); k++) { if (k > a && steps[k].volta) break; steps[k].volta = v; }
     }
   });
 }
@@ -635,7 +668,6 @@ $("popKind").addEventListener("click", e => {
   const b = e.target.closest("button");
   if (!b || !ed.sel) return;
   const st = ed.song.steps[ed.sel.i];
-  ed.popView = b.dataset.kind === "ctrl" ? "ctrl" : "step";
   // a rest made a note starts with every string muted (brushing) until frets are chosen
   if (b.dataset.kind === "rest" && (isPlayed(st) || st.tie)) edRest();
   else if (b.dataset.kind === "note" && !isPlayed(st) && !st.tie) edBrush(false);
@@ -644,14 +676,15 @@ $("popKind").addEventListener("click", e => {
 $("popTech").addEventListener("change", e => edTech(e.target.value, false));
 $("popLen").addEventListener("input", () => edLenValue(+$("popLen").value));
 $("popLoose").addEventListener("change", e => edLoose(e.target.checked));
-$("popCtrlKind").addEventListener("change", e => { ed.ctrlKind = e.target.value; edShowPop(); });
-$("popBpmOn").addEventListener("change", e => edBpmOn(e.target.checked));
-$("popBpm").addEventListener("change", e => edBpm(Math.round(+e.target.value)));
-$("popBpm").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } });
-$("popRepStart").addEventListener("click", () => edRepeat("start"));
-$("popRepEnd").addEventListener("click", () => edRepeat("end"));
-$("popVolta").addEventListener("click", () => edRepeat("volta"));
-$("popRepCount").addEventListener("change", e => edRepeat("count", +e.target.value));
+$("popBar").addEventListener("click", () => { if (ed.sel) edOpenBar(barOfStep(ed.song, ed.sel.i)); });
+$("barBpmOn").addEventListener("change", e => edBarBpmOn(e.target.checked));
+$("barBpm").addEventListener("change", e => edBarBpm(Math.round(+e.target.value)));
+$("barBpm").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } });
+$("barRepStart").addEventListener("click", () => edBarRepeat("start"));
+$("barRepEnd").addEventListener("click", () => edBarRepeat("end"));
+$("barVolta").addEventListener("click", () => edBarRepeat("volta"));
+$("barRepCount").addEventListener("change", e => edBarRepeat("count", +e.target.value));
+$("barClose").addEventListener("click", edCloseBar);
 $("edCapo").addEventListener("change", e => edCapo(+e.target.value));
 $("popChordSet").addEventListener("click", () => { edChord($("popChord").value.trim()); $("popChord").blur(); });
 $("popChord").addEventListener("keydown", e => {
@@ -667,6 +700,8 @@ $("popPlay").addEventListener("click", () => {
 $("popClose").addEventListener("click", () => { ed.popOpen = false; edShowPop(); });
 
 $("edTab").addEventListener("click", e => {
+  const hit = e.target.closest(".tab-barhit");
+  if (hit && !ed.song.errors.length) { edOpenBar(+hit.dataset.bar); return; }
   const g = e.target.closest(".tab-step"), svg = e.target.closest("svg");
   if (!g || !svg || ed.song.errors.length) return;
   const m = svg.getScreenCTM();
@@ -677,10 +712,12 @@ $("edTab").addEventListener("click", e => {
 });
 // a click on empty space closes the edit window
 $("edBody").addEventListener("click", e => {
-  if (ed.popOpen && !e.target.closest(".tab-step, .ed-pop")) { ed.popOpen = false; edShowPop(); }
+  if (e.target.closest(".tab-step, .tab-barhit, .ed-pop")) return;
+  if (ed.popOpen) { ed.popOpen = false; edShowPop(); }
+  if (ed.bar != null) edCloseBar();
 });
 // the TAB re-flows on resize: put the cursor and the window back
-new MutationObserver(() => { if (ed.sel && !$("edTab").querySelector(".tab-cursor")) { edDrawCursor(); edShowPop(); } })
+new MutationObserver(() => { if (ed.sel && !$("edTab").querySelector(".tab-cursor")) { edDrawCursor(); edShowPop(); edShowBarPop(); } })
   .observe($("edTab"), { childList: true });
 
 $("edBack").addEventListener("click", edBack);
@@ -737,7 +774,11 @@ document.addEventListener("keydown", e => {
   if (e.altKey) return;
   if (k === " ") { done(); edPlay(); return; }
   if (k === "?") { done(); $("edKeysDlg").showModal(); return; }
-  if (k === "Escape") { if (ed.popOpen) { done(); ed.popOpen = false; edShowPop(); } return; }
+  if (k === "Escape") {
+    if (ed.popOpen) { done(); ed.popOpen = false; edShowPop(); }
+    else if (ed.bar != null) { done(); edCloseBar(); }
+    return;
+  }
   if (k === "Home") { done(); $("edHome").click(); return; }
   if (!ed.sel) return;
   const digit = /^(Digit|Numpad)(\d)$/.exec(code);

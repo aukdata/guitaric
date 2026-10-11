@@ -2,6 +2,7 @@
 // scale: drawn size on screen relative to the layout units below (0.7 = 70%)
 const TAB = { cell: 30, minStep: 40, row: 22, top: 46, pad: 16, scale: 0.7 };
 const STRING_LABELS = ["e", "B", "G", "D", "A", "E"];
+const BAR_STRIP = 24; // height of the bar strip over the staff in the editor
 
 // Draws the song as TAB staves that wrap to the container's width (at bar lines when a bar fits).
 // Returns { setState, clearStates, setPlaying, scrollTo } so callers can highlight and follow along.
@@ -17,10 +18,10 @@ function renderTab(container, song, opts = {}) {
   const cellW = TAB.cell * 8 / song.grid; // an 8th note keeps the same width on a 16th grid
   const fullWidths = song.steps.map(st => Math.max(TAB.minStep, st.len * cellW));
   // steps grouped into bars
-  const bars = [[]], endsBar = [];
+  const bars = [[]], endsBar = [], barOf = [];
   let cells = 0;
   song.steps.forEach((st, i) => {
-    bars[bars.length - 1].push(i);
+    bars[bars.length - 1].push(i); barOf[i] = bars.length - 1;
     cells += st.len;
     endsBar[i] = cells % barCells === 0;
     if (endsBar[i] && i < song.steps.length - 1) bars.push([]);
@@ -77,8 +78,23 @@ function renderTab(container, song, opts = {}) {
         const x = tempoMark(svg, 4, 10, song.bpm || 80);
         if (song.capo) { const t = mk("text", { x: x + 10, y: 10, class: "tab-capo" }, svg); t.textContent = `Capo ${song.capo}`; }
       }
+      // opts.barStrip: a strip over each bar (its part of this row) that selects the bar
+      const segs = [];
+      if (opts.barStrip) for (const i of r.steps) {
+        const seg = segs[segs.length - 1];
+        if (seg && seg.bar === barOf[i]) seg.z = i; else segs.push({ bar: barOf[i], a: i, z: i });
+      }
+      const box = sg => ({ x: at[sg.a].x + 2, y: 0, width: at[sg.z].x + at[sg.z].w - at[sg.a].x - 4, height: BAR_STRIP, rx: 4 });
+      for (const sg of segs) mk("rect", { ...box(sg), class: "tab-barhead", "data-bar": sg.bar }, svg);
       for (const i of r.steps) groups[i] = drawStep(svg, i);
       drawRhythm(svg, r.steps);
+      for (const sg of segs) {
+        if (bars[sg.bar][0] === sg.a) {
+          const b = box(sg), t = mk("text", { x: b.x + b.width - 4, y: 16, class: "tab-barno" }, svg);
+          t.textContent = sg.bar + 1;
+        }
+        mk("rect", { ...box(sg), class: "tab-barhit", "data-bar": sg.bar }, svg);
+      }
       rowEls.push(svg); frag.appendChild(svg);
     });
     container.replaceChildren(frag);
@@ -90,7 +106,8 @@ function renderTab(container, song, opts = {}) {
     const st = song.steps[i];
     const g = mk("g", { class: "tab-step", "data-i": i }, svg);
     const { x: sx, w } = at[i];
-    mk("rect", { x: sx + 2, y: 4, width: w - 4, height: height - 8, rx: 6, class: "tab-hl" }, g);
+    const hy = opts.barStrip ? BAR_STRIP + 2 : 4; // under the bar strip when there is one
+    mk("rect", { x: sx + 2, y: hy, width: w - 4, height: height - 4 - hy, rx: 6, class: "tab-hl" }, g);
     const cx = sx + Math.min(w, TAB.minStep) / 2;
     // a tempo change ("@bpm") from this step on
     if (i > 0 && st.bpm) tempoMark(g, sx + (volta[i] && volta[i - 1] !== volta[i] ? 20 : 4), volta[i] ? 14 : 10, st.bpm);
