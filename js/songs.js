@@ -123,9 +123,9 @@ function chordPitchClasses(name) {
  *   C/G                 slash chord (C over a G bass)
  *   @bpm120             tempo from the next note on (anywhere: a tempo change mid-song)
  *   @[ ... @]  @]3      repeat the part between (twice / 3 times); "@]" alone repeats from the top
- *   @[ A @1 B @] C      "@1": first ending, skipped on the last time through (A B A C)
- *   @[ A @1 B @] @2 C   "@2": second ending (to the end of its bar), only shown; inside a repeat: last time only
- *   a "@[" with no "@]" repeats to the end of the song
+ *   @[ A @1 B @2 C @]   endings: "@n" to the next ending or "@]", played the n-th time only (A B A C);
+ *                       "@0" ends an ending early; outside a repeat they are only shown
+ *   a "@[" with no "@]" repeats up to the next "@[" or the end of the song
  *   C:4  6-3:2  r:2     ":n" = length in cells (cell = 1/grid note; a song may set grid: 16)
  *   @16 ...             at the very start: use a 16th-note grid (@32: 32nd notes)
  *   @capo3 ...          at the very start: capo on the 3rd fret (frets are counted from the capo)
@@ -136,8 +136,9 @@ function parseSongText(text, opts = {}) {
   const usesBars = text.includes("|");
   const bars = text.split("|").map(b => b.trim()).filter(Boolean);
   const steps = [], errors = [];
-  // directives waiting for the next note: tempo, repeat start; volta: inside a first (1) or second (2) ending
-  let pending = {}, volta = 0;
+  // directives waiting for the next note: tempo, repeat start; volta: inside the n-th ending (0: none)
+  // (an ending written just after a repeat's "@]" only marks the bar it is in)
+  let pending = {}, volta = 0, afterEnd = false, barOnly = false;
   for (const bar of (usesBars ? bars : [text])) {
     const items = [];
     const push = item => {
@@ -148,13 +149,13 @@ function parseSongText(text, opts = {}) {
       if (tok[0] === "@") {
         let m;
         if ((m = /^@bpm(\d+)$/i.exec(tok)) && +m[1] >= 20 && +m[1] <= 300) pending.bpm = +m[1];
-        else if (tok === "@[") pending.repStart = true;
-        else if (tok === "@1" || tok === "@2") volta = +tok[1];
+        else if (tok === "@[") { pending.repStart = true; afterEnd = false; volta = 0; }
+        else if (/^@\d$/.test(tok)) { volta = +tok[1]; barOnly = afterEnd; }
         else if ((m = /^@\](\d*)$/.exec(tok)) && (!m[1] || (+m[1] >= 2 && +m[1] <= 9))) {
           const last = items[items.length - 1] || (!items.length && steps[steps.length - 1]);
           if (last) last.repEnd = m[1] ? +m[1] : 2;
           else errors.push(`「${tok}」の前に音がありません`);
-          volta = 0;
+          volta = 0; afterEnd = true;
         } else errors.push(`「${tok}」は読めません（@bpm120 / @[ / @] / @]3 / @1 / @2）`);
         continue;
       }
@@ -196,28 +197,40 @@ function parseSongText(text, opts = {}) {
       if (!notes) { errors.push(`「${tok}」はコード名としても音（弦-フレット）としても読めません`); continue; }
       for (let k = 0; k < times; k++) push({ notes, chord: name, len: len ? Math.max(1, Math.round(len / times)) : null, split: times, ...extra });
     }
+    if (barOnly) { volta = 0; barOnly = false; }
     // chords without an explicit length fill the bar (or a whole bar each when no bars are written)
     const open = items.filter(i => i.len == null);
     const used = items.reduce((a, i) => a + (i.len || 0), 0);
     const share = usesBars ? Math.max(1, Math.floor((barCells - used) / (open.length || 1))) : barCells;
-    if (volta === 2) volta = 0; // a second ending lasts to the end of its bar (write "@2" again to go on)
     for (const { split, ...i } of items) steps.push(Object.assign(i, { len: i.len ?? (usesBars ? share : Math.max(1, Math.round(barCells / (split || 1)))) }));
   }
   if (pending.repStart) errors.push("「@[」の後に音がありません");
   return { steps, errors };
 }
 
-// The order steps are played in, repeats unrolled. A repeat runs from its "@[" (or the end of the
-// previous repeat, or the top) to its "@]" (none: the end of the song, marked autoEnd); a first ending
-// ("@1") is skipped on the last time through, a second ending inside the repeat plays only then.
-function playOrder(steps, errors) {
+// The repeats: each runs from its "@[" (or the end of the previous repeat, or the top) to its "@]";
+// one left open ends before the next "@[" or at the end of the song (that step is marked autoEnd).
+function repeatBlocks(steps) {
   const blocks = [];
   let open = -1, after = 0;
+  const close = (end, count, auto) => {
+    blocks.push({ start: open >= 0 ? open : after, end, count, auto });
+    if (auto) steps[end].autoEnd = true;
+    open = -1; after = end + 1;
+  };
   steps.forEach((st, i) => {
-    if (st.repStart) { if (open >= 0) errors.push(`${i + 1}番目の音：繰り返しの中に「@[」があります`); open = i; }
-    if (st.repEnd) { blocks.push({ start: open >= 0 ? open : after, end: i, count: st.repEnd }); open = -1; after = i + 1; }
+    delete st.autoEnd;
+    if (st.repStart) { if (open >= 0 && i > open) close(i - 1, 2, true); open = i; }
+    if (st.repEnd) close(i, st.repEnd, false);
   });
-  if (open >= 0) { blocks.push({ start: open, end: steps.length - 1, count: 2 }); steps[steps.length - 1].autoEnd = true; }
+  if (open >= 0) close(steps.length - 1, 2, true);
+  return blocks;
+}
+
+// The order steps are played in, repeats unrolled; inside a repeat the n-th ending ("@n") plays
+// only the n-th time through.
+function playOrder(steps) {
+  const blocks = repeatBlocks(steps);
   const order = [];
   let block = null;
   for (let i = 0; i < steps.length; i++) {
@@ -226,8 +239,7 @@ function playOrder(steps, errors) {
       if (b && b !== block) block = { ...b, pass: 1 };
     }
     const inBlock = block && i >= block.start && i <= block.end;
-    const last = inBlock && block.pass === block.count;
-    if (!(inBlock && ((steps[i].volta === 1 && last) || (steps[i].volta === 2 && !last)))) order.push(i);
+    if (!(inBlock && steps[i].volta && steps[i].volta !== block.pass)) order.push(i);
     if (inBlock && i === block.end) {
       if (block.pass < block.count) { block.pass++; i = block.start - 1; continue; }
       block = null;
@@ -281,6 +293,6 @@ function buildSong(s) {
   // the tempo in force at each step ("@bpm" changes it from that step on; older songs: s.bpm)
   let tempo = s.bpm || 80;
   parsed.steps.forEach(st => { if (capo) st.capo = capo; if (st.bpm) tempo = st.bpm; st.tempo = tempo; });
-  const order = playOrder(parsed.steps, parsed.errors);
+  const order = playOrder(parsed.steps);
   return { ...s, timeSig, grid, capo, bpm: parsed.steps.length ? parsed.steps[0].tempo : tempo, order, ...parsed };
 }

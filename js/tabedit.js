@@ -15,9 +15,9 @@ function stepToken(st, withLen) {
 }
 
 // tempo and repeat marks around a token ("@[ @bpm120 C*4 @]3"): those before it from its first step,
-// the repeat end from its last; volta: it opens a first (1) or second (2) ending
+// the repeat end from its last; volta: the ending it opens ("@2") or closes ("@0"), or ""
 function marked(st, last, tok, volta, noBpm) {
-  return (st.repStart ? "@[ " : "") + (volta ? `@${volta} ` : "") + (st.bpm && !noBpm ? `@bpm${st.bpm} ` : "") + tok
+  return (st.repStart ? "@[ " : "") + volta + (st.bpm && !noBpm ? `@bpm${st.bpm} ` : "") + tok
     + (last.repEnd ? (last.repEnd === 2 ? " @]" : ` @]${last.repEnd}`) : "");
 }
 // marks that belong to a place in the song, not to the note there (kept when the note is replaced)
@@ -35,7 +35,13 @@ function stepsToText(steps, grid, timeSig, prefix) {
   const barCells = timeSig[0] * grid / 4, bars = [];
   let cell = 0;
   for (const st of steps) { const b = Math.floor(cell / barCells); (bars[b] = bars[b] || []).push(st); cell += st.len; }
-  const opensVolta = new Set(steps.filter((st, i) => st.volta && !(steps[i - 1] && steps[i - 1].volta === st.volta)));
+  // where an ending starts ("@n"), and where one stops before a repeat end closed it ("@0")
+  const voltaTok = new Map();
+  steps.forEach((st, i) => {
+    const prev = steps[i - 1], carried = prev && prev.volta && !prev.repEnd && !st.repStart ? prev.volta : 0;
+    if ((st.volta || 0) !== carried) voltaTok.set(st, `@${st.volta || 0} `);
+  });
+  const opensVolta = { has: st => voltaTok.has(st) };
   const lead = steps[0] && steps[0].bpm ? `@bpm${steps[0].bpm} ` : "";
   // the parser reads the marks back too; a first ending runs on into the next bar
   const same = (a, b) => a.length === b.length && a.every((st, i) => stepSig(st) === stepSig(b[i]));
@@ -53,12 +59,10 @@ function stepsToText(steps, grid, timeSig, prefix) {
       let t;
       if (!r.st.chord || r.n === 1) t = open && r.st.chord ? stepToken(r.st, false) : stepToken(r.st, true);
       else t = `${r.st.chord}*${r.n}${(r.st.pm ? "_" : "") + (r.st.loose ? "?" : "")}` + (open ? "" : ":" + r.st.len * r.n);
-      // a second ending is written again at each bar it goes on into
-      const v = opensVolta.has(r.st) || (r.st.volta === 2 && r.st === bar[0]) ? r.st.volta : 0;
-      return marked(r.st, r.last, t, v, r.st === steps[0]);
+      return marked(r.st, r.last, t, voltaTok.get(r.st) || "", r.st === steps[0]);
     };
     const short = runs.map(r => tok(r, true)).join(" ");
-    const pre = (bi === 0 ? lead : "") + (bar[0].volta === 1 && !opensVolta.has(bar[0]) ? "@1 " : "");
+    const pre = (bi === 0 ? lead : "") + (bar[0].volta && !voltaTok.has(bar[0]) ? `@${bar[0].volta} ` : "");
     if (same(parseSongText(`${pre}|${short}|`, { grid, timeSig }).steps, bar.map(strip))) return short;
     return runs.map(r => tok(r, false)).join(" ");
   });
@@ -242,12 +246,17 @@ function edShowPop() {
   $("popBpmOn").disabled = i === 0;
   $("popBpm").disabled = !$("popBpmOn").checked;
   if (document.activeElement !== $("popBpm")) $("popBpm").value = st.tempo || ed.song.bpm || 80;
+  // a repeat starts outside any repeat; its end, endings and count belong to the repeat the step is in
+  const blk = blockOf(ed.song, i), nv = nextVolta(ed.song, i);
   $("popRepStart").setAttribute("aria-pressed", String(!!st.repStart));
+  $("popRepStart").disabled = !!blk && !st.repStart;
   $("popRepEnd").setAttribute("aria-pressed", String(!!st.repEnd || !!st.autoEnd));
-  $("popVolta1").setAttribute("aria-pressed", String(st.volta === 1));
-  $("popVolta2").setAttribute("aria-pressed", String(st.volta === 2));
-  $("popRepCount").value = st.repEnd || 2;
-  $("popRepCount").disabled = !st.repEnd;
+  $("popRepEnd").disabled = !blk;
+  $("popVolta").textContent = (nv || (blk ? blk.count : 1)) + ".";
+  $("popVolta").setAttribute("aria-pressed", String(!!st.volta));
+  $("popVolta").disabled = !nv;
+  $("popRepCount").value = blk ? blk.count : 2;
+  $("popRepCount").disabled = !blk;
   const k = lenPos(st.len, ed.song.grid), exact = Math.abs(st.len / ed.song.grid - LEN_VALUES[k][0]) < 1e-9;
   $("popLen").value = k;
   $("popLenText").textContent = exact ? LEN_VALUES[k][1] : `${st.len}/${ed.song.grid}`;
@@ -375,36 +384,40 @@ function edBpm(v) {
   const { i } = ed.sel;
   edChange(steps => { steps[i].bpm = v; }, { merge: "bpm" });
 }
-// the steps from i to the end of its bar
-function barEnd(steps, i, grid, beats) {
-  const barCells = beats * grid / 4;
-  let cell = 0;
-  for (let k = 0; k < i; k++) cell += steps[k].len;
-  let k = i;
-  for (cell += steps[k].len; k + 1 < steps.length && cell % barCells; k++) cell += steps[k + 1].len;
-  return k;
+// the repeat a step is in (null: none)
+const blockOf = (song, i) => repeatBlocks(song.steps.map(cloneStep)).find(b => i >= b.start && i <= b.end) || null;
+// the number the ending button offers at step i: its own, or one past the last ending before it in its
+// repeat (null: past the repeat's count)
+function nextVolta(song, i) {
+  const st = song.steps[i], b = blockOf(song, i);
+  if (st.volta) return st.volta;
+  if (!b) return null;
+  const n = Math.max(0, ...song.steps.slice(b.start, i).map(x => x.volta || 0)) + 1;
+  return n <= b.count ? n : null;
 }
-// repeat marks on this step: "start" (|: before it), "end" (:| after it, played n times),
-// "volta1" (first ending: from here to the repeat's end), "volta2" (second ending: to the end of the bar)
+
+// repeat marks on this step: "start" (|: before it, outside a repeat), "end" (:| after it, inside one;
+// moves the repeat's end here), "volta" (the next ending, from here to the next ending or the repeat's
+// end), "count" (how many times the repeat this step is in plays)
 function edRepeat(kind, n) {
   if (!ed.sel) return;
-  const { i } = ed.sel;
-  edChange((steps, song) => {
+  const { i } = ed.sel, b = blockOf(ed.song, i), v = kind === "volta" ? nextVolta(ed.song, i) : 0;
+  if (kind === "volta" && !v) return;
+  edChange(steps => {
     const st = steps[i];
-    if (kind === "start") { if (st.repStart) delete st.repStart; else st.repStart = true; }
-    else if (kind === "end") { if (n) st.repEnd = n; else if (st.repEnd) delete st.repEnd; else st.repEnd = 2; }
-    else {
-      const v = kind === "volta1" ? 1 : 2, on = st.volta !== v;
-      if (on) {
-        const end = v === 1 ? steps.findIndex((x, k) => k >= i && x.repEnd) : barEnd(steps, i, song.grid, song.timeSig[0]);
-        for (let k = i; k <= (end < 0 ? steps.length - 1 : end); k++) steps[k].volta = v;
-      } else {
-        // the whole bracket this step is in
-        let a = i, b = i;
-        while (a > 0 && steps[a - 1].volta === v) a--;
-        while (b + 1 < steps.length && steps[b + 1].volta === v) b++;
-        for (let k = a; k <= b; k++) delete steps[k].volta;
-      }
+    if (kind === "start") { if (st.repStart) delete st.repStart; else if (!b) st.repStart = true; }
+    else if (kind === "end") {
+      if (st.repEnd) delete st.repEnd;
+      else if (b) { const count = steps[b.end].repEnd || 2; delete steps[b.end].repEnd; st.repEnd = count; }
+    } else if (kind === "count") { if (b) steps[b.end].repEnd = n; }
+    else if (st.volta) {
+      // off: the whole ending this step is in
+      let a = i, z = i;
+      while (a > 0 && steps[a - 1].volta === st.volta) a--;
+      while (z + 1 < steps.length && steps[z + 1].volta === st.volta) z++;
+      for (let k = a; k <= z; k++) delete steps[k].volta;
+    } else {
+      for (let k = i; k <= (b ? b.end : i); k++) { if (k > i && steps[k].volta) break; steps[k].volta = v; }
     }
   });
 }
@@ -637,9 +650,8 @@ $("popBpm").addEventListener("change", e => edBpm(Math.round(+e.target.value)));
 $("popBpm").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } });
 $("popRepStart").addEventListener("click", () => edRepeat("start"));
 $("popRepEnd").addEventListener("click", () => edRepeat("end"));
-$("popVolta1").addEventListener("click", () => edRepeat("volta1"));
-$("popVolta2").addEventListener("click", () => edRepeat("volta2"));
-$("popRepCount").addEventListener("change", e => edRepeat("end", +e.target.value));
+$("popVolta").addEventListener("click", () => edRepeat("volta"));
+$("popRepCount").addEventListener("change", e => edRepeat("count", +e.target.value));
 $("edCapo").addEventListener("change", e => edCapo(+e.target.value));
 $("popChordSet").addEventListener("click", () => { edChord($("popChord").value.trim()); $("popChord").blur(); });
 $("popChord").addEventListener("keydown", e => {

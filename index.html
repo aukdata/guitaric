@@ -163,7 +163,7 @@
           </div>
           <div id="popCtrlRepeat" class="pop-row">
             <div class="seg" role="group" aria-label="繰り返し">
-              <button id="popRepStart" type="button" aria-pressed="false" title="繰り返しの始め">|:</button><button id="popRepEnd" type="button" aria-pressed="false" title="繰り返しの終わり">:|</button><button id="popVolta1" type="button" aria-pressed="false" title="1番カッコ">1.</button><button id="popVolta2" type="button" aria-pressed="false" title="2番カッコ">2.</button>
+              <button id="popRepStart" type="button" aria-pressed="false" title="繰り返しの始め">|:</button><button id="popRepEnd" type="button" aria-pressed="false" title="繰り返しの終わり">:|</button><button id="popVolta" type="button" aria-pressed="false" title="カッコ（何回目に弾くか）">1.</button>
             </div>
             <select id="popRepCount" aria-label="繰り返す回数" title="繰り返す回数"><option value="2">×2</option><option value="3">×3</option><option value="4">×4</option><option value="5">×5</option><option value="6">×6</option><option value="7">×7</option><option value="8">×8</option></select>
           </div>
@@ -194,7 +194,7 @@
             <li><code>6-0_</code> … ブリッジミュート、<code>x</code> … ブラッシング、<code>3-7v</code> … ビブラート、<code>3-&lt;12&gt;</code> … ハーモニクス（3・4・5・7・9・12・16・19・24フレット）</li>
             <li><code>C/G</code> … スラッシュコード（ベースを G に）</li>
             <li><code>@bpm120</code> … ここからテンポ120（曲の途中でも書けます）</li>
-            <li><code>@[ … @]</code> … 間を2回、<code>@]3</code> で3回繰り返し（<code>@]</code> がなければ最後まで）。<code>@[ A @1 B @] @2 C</code> は A B A C（1番・2番カッコ）</li>
+            <li><code>@[ … @]</code> … 間を2回、<code>@]3</code> で3回繰り返し（<code>@]</code> がなければ最後まで）。<code>@[ A @1 B @2 C @]</code> は A B A C（1番・2番カッコ）</li>
             <li><code>~:8</code> … タイ。直前の音を8マス分のばします</li>
             <li><code>:2</code> … 長さ（例 <code>6-3:2</code> は8分音符2つ分）。<code>@16</code> を先頭に書くと1マスが16分音符になります</li>
           </ul>
