@@ -6,7 +6,7 @@ const practice = {
   song: null, idx: 0, tab: null, stream: null, source: null, raf: 0,
   tracker: createTracker(), okRun: 0, missRun: 0, fresh: true, silent: 0, wrongShown: false, sameAsPrev: false, loose: false, lastOk: false, ringing: [], strummed: false,
   onsetDet: null, tap: null, tapOut: null, onsets: [], lastStrum: -1,
-  marks: [], firstTry: [], startedAt: 0, mutedUntil: 0, wakeLock: null
+  marks: [], startedAt: 0, mutedUntil: 0, wakeLock: null
 };
 const model = { sources: [], timers: [], gain: null, from: null, cur: 0 };
 
@@ -80,7 +80,6 @@ function playableIndex(i) {
 }
 
 function restartPractice() {
-  practice.firstTry = practice.song.steps.map(() => true);
   practice.startedAt = 0;
   $("pResult").hidden = true;
   practice.tab.clearStates(); practice.marks = [];
@@ -118,13 +117,12 @@ function setFeedback(msg, kind) {
 }
 
 function finishPractice() {
-  const steps = practice.song.steps, idxs = steps.map((s, i) => i).filter(i => judged(steps[i]));
-  const first = idxs.filter(i => practice.firstTry[i]).length;
+  const steps = practice.song.steps;
   const secs = practice.startedAt ? (performance.now() - practice.startedAt) / 1000 : 0;
   $("pWhere").textContent = "";
   $("pProgress").textContent = `${steps.length} / ${steps.length}`;
   setFeedback("最後まで弾けました", "ok");
-  $("pResultText").textContent = `かかった時間 ${secs.toFixed(1)} 秒 · 一発で弾けた割合 ${idxs.length ? Math.round(first / idxs.length * 100) : 0}%（${first} / ${idxs.length}）`;
+  $("pResultText").textContent = `かかった時間 ${secs.toFixed(1)} 秒`;
   $("pResult").hidden = false;
 }
 
@@ -197,7 +195,6 @@ function judgeBend(st, note, res, top, ringing) {
 function showWrong(st, res, tr, j) {
   practice.wrongShown = true;
   if (!practice.startedAt) practice.startedAt = performance.now();
-  practice.firstTry[practice.idx] = false;
   const heard = st.chord && tr.cands && tr.cands[0] ? tr.cands[0].name.replace("（単音）", "")
     : res.notes.slice().sort((a, b) => b.salience - a.salience).slice(0, st.notes.length > 1 ? 3 : 1).map(n => noteName(n.midi)).join(" ");
   const why = [j.missing.length ? `${j.missing.join("・")} が聞こえません` : "", j.extra.length ? `余計な音 ${j.extra.join("・")} が鳴っています` : ""].filter(Boolean).join("、");
@@ -206,7 +203,7 @@ function showWrong(st, res, tr, j) {
 
 function passStep() {
   if (!practice.startedAt) practice.startedAt = performance.now();
-  markStep(practice.idx, practice.firstTry[practice.idx] ? "done" : "done-retry");
+  markStep(practice.idx, "done");
   practice.lastOk = false;
   gotoStep(playableIndex(practice.idx + 1));
   if (practice.idx < practice.song.steps.length) setFeedback("OK", "ok");
@@ -391,7 +388,7 @@ $("pPrev").addEventListener("click", () => {
 });
 $("pNext").addEventListener("click", () => {
   if (practice.idx >= practice.song.steps.length) return;
-  if (judged(practice.song.steps[practice.idx])) { practice.firstTry[practice.idx] = false; markStep(practice.idx, "skipped"); }
+  if (judged(practice.song.steps[practice.idx])) markStep(practice.idx, "skipped");
   gotoStep(practice.idx + 1);
 });
 $("pModel").addEventListener("click", playModel);

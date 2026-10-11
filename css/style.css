@@ -151,7 +151,6 @@ svg.tab { display: block; padding: 0; border-radius: 0; } /* not the mode-tab bu
 .tab-step[data-state="current"] .tab-bg { fill: var(--accent-soft); }
 .tab-step[data-state="current"] .tab-fret, .tab-step[data-state="current"] .tab-chord { fill: var(--accent); }
 .tab-step[data-state="done"] .tab-fret, .tab-step[data-state="done"] .tab-chord { fill: var(--good); }
-.tab-step[data-state="done-retry"] .tab-fret, .tab-step[data-state="done-retry"] .tab-chord { fill: var(--warn); }
 .tab-step[data-state="skipped"] .tab-fret, .tab-step[data-state="skipped"] .tab-chord { fill: var(--muted); }
 
 /* ===== editor ===== */
