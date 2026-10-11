@@ -194,21 +194,20 @@ function renderTab(container, song, opts = {}) {
       const t = mk("text", { x: cx, y: y + 5, class: "tab-fret" }, g); t.textContent = label;
     }
     const held = st.tie && song.steps.slice(0, i).reverse().find(x => x.notes.length);
-    if (held && i > 0 && at[i - 1].row === at[i].row) {
-      // a tie: a slur from the previous note (or tie) on each held string, over the note
-      // (under it for the lowest of several)
-      const pv = at[i - 1], px = pv.x + Math.min(pv.w, TAB.minStep) / 2, strings = held.notes.map(n => n[0]);
-      const low = Math.max(...strings);
-      for (const s of strings) {
-        const y = TAB.top + (s - 1) * TAB.row, under = strings.length > 1 && s === low;
-        const x0 = px + (song.steps[i - 1].tie ? 2 : 7), x1 = cx - 2, dy = under ? 1 : -1;
-        mk("path", { d: `M${x0} ${y + dy * 7} Q${(x0 + x1) / 2} ${y + dy * 15} ${x1} ${y + dy * 7}`, class: "tab-slur" }, g);
-      }
-    } else if (held) {
-      // a tie at the start of a row shows the held frets in parentheses
+    if (held) {
+      // a tie: the held frets in parentheses, and a slur to them from the previous note (or tie)
+      // on each held string, over the note (under it for the lowest of several)
+      const strings = held.notes.map(n => n[0]), low = Math.max(...strings);
+      const sameRow = i > 0 && at[i - 1].row === at[i].row;
+      const pv = at[i - 1], px = sameRow ? pv.x + Math.min(pv.w, TAB.minStep) / 2 : 0;
       for (const [s, f] of held.notes) {
-        const y = TAB.top + (s - 1) * TAB.row, label = `(${f})`;
-        mk("rect", { x: cx - 5 - label.length * 4, y: y - 9, width: 10 + label.length * 8, height: 18, rx: 4, class: "tab-bg" }, g);
+        const y = TAB.top + (s - 1) * TAB.row, label = `(${f})`, half = 5 + label.length * 4;
+        if (sameRow) {
+          const prevLabel = song.steps[i - 1].tie ? label : String(f);
+          const x0 = px + 1 + prevLabel.length * 4, x1 = cx - half + 3, dy = strings.length > 1 && s === low ? 1 : -1;
+          mk("path", { d: `M${x0} ${y + dy * 7} Q${(x0 + x1) / 2} ${y + dy * 15} ${x1} ${y + dy * 7}`, class: "tab-slur" }, g);
+        }
+        mk("rect", { x: cx - half, y: y - 9, width: 2 * half, height: 18, rx: 4, class: "tab-bg" }, g);
         const t = mk("text", { x: cx, y: y + 5, class: "tab-fret tab-tie" }, g); t.textContent = label;
       }
     } else if (!st.notes.length && !st.brush) drawRests(g, st.len, sx, w);
